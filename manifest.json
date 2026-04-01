@@ -1,0 +1,22 @@
+{
+  "name": "POS Kasir Polindes",
+  "short_name": "POS Polindes",
+  "description": "Aplikasi Point of Sale untuk Polindes dengan integrasi BPJS",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F8F9FA",
+  "theme_color": "#5E72E4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

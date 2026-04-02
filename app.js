@@ -470,7 +470,27 @@ function populateReceiptPreview() {
   document.getElementById('print-total').innerText = formatRp(d.totals.total);
 }
 
-function printReceipt() { window.print(); }
+function printReceipt() {
+  // Strategi: Clone konten #print-area ke #print-clone (di luar Modal)
+  // agar tidak terganggu oleh transform/position Bootstrap Modal.
+  const source = document.getElementById('print-area');
+  const clone = document.getElementById('print-clone');
+  if (!source || !clone) { window.print(); return; } // Fallback
+
+  // 1. Salin konten struk ke container clone
+  clone.innerHTML = source.innerHTML;
+
+  // 2. Tunggu sebentar agar browser selesai render layout clone
+  requestAnimationFrame(() => {
+    // 3. Cetak
+    window.print();
+
+    // 4. Bersihkan clone setelah dialog print selesai/ditutup
+    // Gunakan setTimeout karena window.print() bersifat blocking di desktop
+    // tapi async di beberapa mobile browser
+    setTimeout(() => { clone.innerHTML = ''; }, 1000);
+  });
+}
 
 function reprintTransaction(t) {
   try {

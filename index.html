@@ -40,7 +40,7 @@
           <i class="fa-solid fa-plus fs-5"></i>
         </div>
         <h4 class="m-0 fw-bold text-dark" id="app-title">Polindes POS</h4>
-        <span class="badge bg-light text-secondary border ms-2" style="font-size: 0.75rem;">v1.1.3</span>
+        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.1.4</span>
       </div>
       <div id="sync-status" class="text-success small fw-bold">
         <i class="fa-solid fa-cloud-check me-1"></i> Online
@@ -894,6 +894,10 @@
       </div>
     </div>
   </div>
+
+  <!-- PRINT CLONE — Container cetak di luar hierarki Modal -->
+  <!-- JS akan clone #print-area ke sini saat printReceipt() dipanggil -->
+  <div id="print-clone"></div>
 
   <!-- Toast Container -->
   <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">

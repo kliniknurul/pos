@@ -389,115 +389,123 @@ body {
   vertical-align: middle;
 }
 
-/* --- AREA PRINT (THERMAL 58mm & LAPTOP PREVIEW) --- */
+/* ======================================================
+   PRINT SYSTEM — Thermal 58mm & Laptop Preview
+   Strategi: Clone konten #print-area ke #print-clone
+   yang berada DI LUAR hierarki Bootstrap Modal.
+   Ini menghindari semua masalah transform/position/z-index
+   yang menyebabkan inkonsistensi antara Laptop dan HP.
+   ====================================================== */
+
+/* Saat di layar biasa, sembunyikan container clone */
+#print-clone {
+  display: none;
+}
+
 @media print {
+
+  /* --- 1. Ukuran Kertas & Reset Global --- */
   @page {
-    margin: 0;
-    size: 58mm auto;
+    margin: 0;          /* Tanpa margin bawaan browser */
+    size: 58mm auto;    /* Lebar kertas thermal, tinggi mengikuti konten */
   }
 
   html, body {
-    width: 100% !important;
+    width: 58mm !important;
+    height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    background-color: #fff !important;
-  }
-
-  /* Sembunyikan SEMUA elemen di luar receiptModal */
-  body > *:not(#receiptModal) {
-    display: none !important;
-  }
-
-  /* Munculkan modal receipt sebagai dokumen normal (normal document flow) */
-  #receiptModal {
-    display: block !important;
-    position: relative !important;
-    opacity: 1 !important;
     background: #fff !important;
-    margin: 0 !important;
-    padding: 0 !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* Sembunyikan backdrop bootstrap dan UI kontrol modal */
-  .modal-backdrop,
-  #receiptModal .modal-header,
-  #receiptModal .modal-footer {
+  /* --- 2. Sembunyikan SEMUA Elemen di body --- */
+  body > * {
     display: none !important;
   }
 
-  /* Hapus limit ukuran box model pada konten modal bawaan */
-  #receiptModal .modal-dialog,
-  #receiptModal .modal-content,
-  #receiptModal .modal-body {
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
-    transform: none !important;
-  }
-
-  /* Styling kontainer print utama (Persis Preview & Ukuran Kertas 58mm) */
-  #print-area {
+  /* --- 3. Tampilkan HANYA #print-clone --- */
+  #print-clone {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
     width: 58mm !important;
     max-width: 58mm !important;
-    margin: 0 auto !important; /* Membuat posisinya ke tengah jika di-print di A4 laptop, namun pas jika diset 58mm */
-    padding: 3mm 4mm !important; /* Beri margin kiri kanan agar tidak terlalu mepet dengan ujung kertas thermal */
+    margin: 0 !important;
+    padding: 2mm 3mm !important; /* Jarak aman dari tepi kertas thermal */
     box-sizing: border-box !important;
-    
-    color: #000 !important;
+    background: #fff !important;
+    z-index: 99999 !important;
+
+    /* Font SAMA dengan preview on-screen agar konsisten */
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-    font-size: 12px !important; /* Diperbesar agar sesuai preview */
-    line-height: 1.4 !important;
-  }
-
-  /* Force teks solid black untuk hasil print pemanas thermal yg tajam */
-  #print-area * {
+    font-size: 11px !important;
+    line-height: 1.45 !important;
     color: #000 !important;
   }
 
-  /* Hierarki Font Spesifik Preview */
-  #print-area h5 {
-    font-size: 16px !important;
-    font-weight: bold !important;
+  /* Pastikan semua child terlihat & berwarna hitam pekat */
+  #print-clone * {
+    visibility: visible !important;
+    color: #000 !important;
+  }
+
+  /* --- 4. Tipografi Print (Sesuai Preview) --- */
+  #print-clone h5 {
+    font-size: 14px !important;
+    font-weight: 700 !important;
     margin-bottom: 2px !important;
   }
 
-  #print-area .small {
-    font-size: 11px !important;
+  #print-clone .small {
+    font-size: 10px !important;
   }
 
-  #print-area .fw-bold {
-    font-weight: bold !important;
+  #print-clone .fs-6 {
+    font-size: 12px !important;
   }
 
-  .dashed-hr {
+  #print-clone .fw-bold {
+    font-weight: 700 !important;
+  }
+
+  /* --- 5. Garis Putus-Putus (Dashed HR) --- */
+  #print-clone .dashed-hr,
+  #print-clone hr {
+    border: none !important;
     border-top: 1px dashed #000 !important;
-    margin: 8px 0 !important;
+    margin: 5px 0 !important;
+    opacity: 1 !important;
   }
 
-  #print-area .border-top {
+  #print-clone .border-top {
     border-top: 1px dashed #000 !important;
+    padding-top: 4px !important;
   }
 
-  /* Cegah item produk terpotong jadi dua di antara jeda halaman */
-  #print-items-list {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 6px !important;
-  }
-
-  #print-items-list .d-flex {
+  /* --- 6. Anti Page-Break pada Item Produk --- */
+  #print-clone .print-item,
+  #print-clone .d-flex {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
 
-  /* Hilangkan background badge (seperti text BPJS hijau) pada mode cetak */
-  #print-area .text-success {
-    font-weight: 600 !important;
-    font-size: 10px !important;
+  /* --- 7. Normalisasi Warna Bootstrap --- */
+  #print-clone .text-muted {
+    color: #333 !important; /* Sedikit abu, tetap terbaca di thermal */
+  }
+
+  #print-clone .text-dark,
+  #print-clone .text-success,
+  #print-clone .text-primary {
+    color: #000 !important;
+  }
+
+  /* Sembunyikan backdrop Bootstrap */
+  .modal-backdrop {
+    display: none !important;
   }
 }

@@ -607,10 +607,35 @@ async function toggleBluetoothPrinter() {
       btCharacteristic = null;
     });
 
-    if (!btDevice.gatt.connected) await btDevice.gatt.connect();
+    let services = null;
+    let connected = false;
+    
+    // Implementasi retry 3x dengan stabiliasi (Mencegah error GATT Server disconnected)
+    for (let i = 0; i < 3; i++) {
+      try {
+        if (!btDevice.gatt.connected) await btDevice.gatt.connect();
+        
+        // Jeda stabilisasi untuk OS Android/Windows (sangat penting)
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        if (!btDevice.gatt.connected) throw new Error("Koneksi terputus sesaat setelah terhubung");
 
-    const server = btDevice.gatt;
-    const services = await server.getPrimaryServices();
+        services = await btDevice.gatt.getPrimaryServices();
+        connected = true;
+        break; // berhasil
+      } catch(e) {
+        console.warn(`GATT Connect attempt ${i+1} failed:`, e);
+        if (btDevice && btDevice.gatt.connected) btDevice.gatt.disconnect();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // tunggu sebelum retry
+      }
+    }
+
+    if (!connected || !services) {
+      // Jika nyangkut, matikan instance lama agar bisa pilih ulang
+      btDevice = null;
+      throw new Error("GATT Server terus terputus. Pastikan printer nyala, atau matikan-nyalakan bluetooth HP Anda.");
+    }
+
     let service = services.find(s => s.uuid.includes('18f0') || s.uuid.includes('e781') || s.uuid.includes('4953'));
     if (!service) service = services[0];
 

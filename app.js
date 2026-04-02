@@ -225,15 +225,23 @@ function clearPinUI() { currentPin = ''; updatePinIndicators(); }
 
 async function submitPin(fromCache = false) {
   if (currentPin.length === 0) return;
-  dom.loading.style.display = 'flex'; // Pakai global loading bukan modal loading saja
-  if (!fromCache) document.getElementById('pin-loading').classList.remove('d-none');
+  // Jangan muncuL loading screen jika PIN sudah di-cache agar UI terasa instan
+  if (!fromCache) {
+    dom.loading.style.display = 'flex';
+    document.getElementById('pin-loading').classList.remove('d-none');
+  }
 
   if (PIN_CACHE[currentPin]) {
-    dom.loading.style.display = 'none';
-    if (!fromCache) { document.getElementById('pin-loading').classList.add('d-none'); dom.pinModal.hide(); }
+    if (!fromCache) { 
+      dom.loading.style.display = 'none';
+      document.getElementById('pin-loading').classList.add('d-none'); 
+      dom.pinModal.hide(); 
+    }
     processPinSuccess(PIN_CACHE[currentPin]); return;
   }
 
+  // Jika belum cache, munculkan loading
+  dom.loading.style.display = 'flex';
   const res = await fetchApi('checkPIN', null, currentPin);
   dom.loading.style.display = 'none';
   if (!fromCache) document.getElementById('pin-loading').classList.add('d-none');
@@ -432,15 +440,11 @@ async function doCheckout(cashierName, passedPin) {
   };
   payload.total = sub - disc;
 
-  dom.loading.style.display = 'flex'; dom.loading.style.opacity = '1';
-  
-  const res = await fetchApi('saveTransaction', payload, passedPin);
-  
-  dom.loading.style.opacity = '0'; setTimeout(() => dom.loading.style.display = 'none', 300);
-  
-  if (res.success) {
-    IS_RIWAYAT_STALE = true; IS_STOK_STALE = true;
-    LAST_TRANSACTION = { id: res.transactionId, date: new Date().toLocaleString('id-ID'), cashier: cashierName, data: payload, totals: { sub, disc, total: payload.total }, customerType: payload.type };
+  // OPTIMISTIC UI: Buat Temp ID dan update UI INSTAN
+  const tempId = "INV-" + Math.floor(Date.now() / 1000); // Temporary Offline ID
+  IS_RIWAYAT_STALE = true; IS_STOK_STALE = true;
+  LAST_TRANSACTION = { id: tempId, date: new Date().toLocaleString('id-ID'), cashier: cashierName, data: payload, totals: { sub, disc, total: payload.total }, customerType: payload.type };
+
 
     // OPTIMISTIC UI: Decrement local stock immediately so user can transact again
     CART.forEach(c => { 
@@ -482,7 +486,18 @@ async function doCheckout(cashierName, passedPin) {
     populateReceiptPreview();
     resetTransaction();
     dom.receiptModal.show();
-  } else alert(res.message);
+    
+    // Terapkan sinkronisasi asinkron ke server di background
+    fetchApi('saveTransaction', payload, passedPin).then(res => {
+      if (res.success) {
+         // Timpa ID Temporary yang ada di memori menjadi ID asli dari Apps Script
+         if (LAST_TRANSACTION && LAST_TRANSACTION.id === tempId) {
+             LAST_TRANSACTION.id = res.transactionId;
+         }
+      } else {
+         console.error("Gagal sinkron background", res.message);
+      }
+    });
 }
 
 function resetTransaction() { 
@@ -566,6 +581,7 @@ class EscPosEncoder {
 
 let btDevice = null;
 let btCharacteristic = null;
+let skipGetDevices = false; // Hindari getDevices jika pernah memunculkan device corrupted (Bug iOS Bluefy)
 
 async function toggleBluetoothPrinter() {
   // Jika sudah konek, maka fungsi ini bertindak sebagai Disconnect
@@ -583,10 +599,12 @@ async function toggleBluetoothPrinter() {
 
     document.getElementById('bt-status').innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span> <span class="text-primary small ms-1">Mencari...</span>';
 
-    // Coba reconnect ke device jika API getDevices tersedia (menghindari popup berulang kali)
-    if (!btDevice && navigator.bluetooth.getDevices) {
-      const devices = await navigator.bluetooth.getDevices();
-      if (devices.length > 0) btDevice = devices[0];
+    // Coba reconnect ke device jika API getDevices tersedia
+    if (!btDevice && navigator.bluetooth.getDevices && !skipGetDevices) {
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        if (devices.length > 0) btDevice = devices[0];
+      } catch (e) { console.warn("Peringatan: API getDevices rusak di peramban ini."); }
     }
 
     if (!btDevice) {
@@ -633,7 +651,8 @@ async function toggleBluetoothPrinter() {
     if (!connected || !services) {
       // Jika nyangkut, matikan instance lama agar bisa pilih ulang
       btDevice = null;
-      throw new Error("GATT Server terus terputus. Pastikan printer nyala, atau matikan-nyalakan bluetooth HP Anda.");
+      skipGetDevices = true; // blacklist metode getDevices karena device yang disuplai korup
+      throw new Error("GATT Server gagal merespon. Tekan tombol hubungkan lagi.");
     }
 
     let service = services.find(s => s.uuid.includes('18f0') || s.uuid.includes('e781') || s.uuid.includes('4953'));
@@ -649,10 +668,10 @@ async function toggleBluetoothPrinter() {
     document.getElementById('btn-bt-connect').classList.replace('btn-outline-primary', 'btn-outline-danger');
     return true;
   } catch (err) {
-    console.error(err);
+    console.warn("BT Error: ", err);
     // Ignore error if user cancelled the picker
     if (err.name !== 'NotFoundError' && err.message !== 'User cancelled the requestDevice() chooser.') {
-      alert("Koneksi Bluetooth Gagal: " + err.message);
+      alert("Koneksi Bluetooth Gagal: " + (err?.message || err || "Error Tak Dikenal"));
     }
     document.getElementById('bt-status').innerHTML = '<i class="fa-brands fa-bluetooth text-danger"></i> <span class="text-danger small ms-1">Gagal Konek</span>';
     return false;

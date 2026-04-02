@@ -592,23 +592,24 @@ async function printBluetooth() {
     // HEADER
     esc.alignCenter();
     esc.bold(true);
-    esc.text(GLOBAL_PROFILE.Nama_Bisnis ? GLOBAL_PROFILE.Nama_Bisnis + "\n" : "POLINDES\n");
+    esc.text(GLOBAL_PROFILE.Nama_Bisnis ? GLOBAL_PROFILE.Nama_Bisnis + "\n" : "Polindes\n");
     esc.bold(false);
     if(GLOBAL_PROFILE.Alamat) esc.text(GLOBAL_PROFILE.Alamat + "\n");
-    esc.text("================================\n"); // 32 char wide
+    if(GLOBAL_PROFILE.Telepon) esc.text(GLOBAL_PROFILE.Telepon + "\n");
+    esc.text("--------------------------------\n"); // 32 char wide
     
     // INFO TRANSAKSI
     esc.alignLeft();
-    esc.text("Waktu : " + (d.waktu || d.date) + "\n");
-    if(d.id) esc.text("ID Trx: " + d.id + "\n");
-    esc.text("Kasir : " + d.cashier + "\n");
-    esc.text("Tipe  : " + (d.customerType === 'BPJS' ? 'Pasien BPJS' : 'Pasien Umum') + "\n");
+    if(d.id) esc.text("No: " + d.id + "\n");
+    esc.text("Tgl: " + (d.waktu || d.date) + "\n");
+    esc.text("Kasir: " + d.cashier + "\n");
+    esc.text("--------------------------------\n");
+    esc.text("Pelanggan: " + (d.customerType === 'BPJS' ? 'Pasien BPJS' : 'Pasien Umum') + "\n");
     esc.text("--------------------------------\n");
     
     // ITEM
     d.data.items.forEach(i => {
       // Baris 1: Nama Item
-      // Pastikan nama tidak > 32 char, jika ya potong
       let nama = i.nama;
       if (nama.length > 32) nama = nama.substring(0, 32); 
       esc.text(nama + "\n");
@@ -628,9 +629,9 @@ async function printBluetooth() {
     esc.text(rightAlignText("TOTAL:", String(d.totals.total.toLocaleString('id-ID'))) + "\n");
     esc.bold(false);
     
-    esc.text("================================\n");
+    esc.text("--------------------------------\n");
     esc.alignCenter();
-    esc.text((GLOBAL_PROFILE.Pesan_Struk || "Terima Kasih Atas Kunjungan Anda") + "\n");
+    esc.text((GLOBAL_PROFILE.Pesan_Struk || "Terima kasih atas kunjungan Anda!") + "\n");
     esc.newline(3); // extra feed buat sobekan
     
     const payload = esc.generate();

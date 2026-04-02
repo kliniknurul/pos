@@ -346,6 +346,27 @@ function toggleProductView() {
   }
 }
 
+// Obat Obfuscation Function: Mute the medicine names for patients.
+function censorItemName(name, kategori, id) {
+  let isBarang = false;
+  if (kategori) {
+    isBarang = String(kategori).toLowerCase() === 'barang';
+  } else {
+    // Fallback if kategori is not stored (eg. old history)
+    const gp = GLOBAL_PRODUCTS.find(p => p.ID === id);
+    if (gp) isBarang = String(gp.Kategori).toLowerCase() === 'barang';
+    else isBarang = true; // safe fallback for unknown items
+  }
+  if (!isBarang) return name; // Tindakan/Konseling tidak disensor
+
+  return String(name).split(' ').map(w => {
+     if (w.length <= 3) return w;
+     if (!isNaN(w)) return w; // Biarkan angka (dosis 500mg bisa kena kalau mg pisah, tapi kalau gabung tidak kena)
+     // Sensor huruf tengah kata
+     return w.charAt(0) + '*'.repeat(w.length - 2) + w.charAt(w.length - 1);
+  }).join(' ');
+}
+
 function addToCart(id) {
   const p = GLOBAL_PRODUCTS.find(x => String(x.ID) === String(id)); if (!p) return;
   const isB = String(p.Kategori).toLowerCase() === 'barang';
@@ -363,7 +384,7 @@ function addToCart(id) {
     if (s === 'Full') tg = p.Harga;
     else if (s === 'Sebagian') tg = p.Nilai_Tanggungan;
 
-    CART.push({ id: p.ID, nama: p.Nama, harga: parseFloat(p.Harga) || 0, qty: 1, tanggungan: tg || 0 });
+    CART.push({ id: p.ID, nama: p.Nama, kategori: String(p.Kategori).toLowerCase(), harga: parseFloat(p.Harga) || 0, qty: 1, tanggungan: tg || 0 });
   }
   renderCart();
 }
@@ -435,7 +456,7 @@ async function doCheckout(cashierName, passedPin) {
       const h = c.harga; const t = IS_BPJS ? Math.min(c.tanggungan, h) : 0;
       const subitem = (h * c.qty) - (t * c.qty);
       sub += h * c.qty; disc += t * c.qty;
-      return { id: c.id, nama: c.nama, harga: h, qty: c.qty, disc_bpjs: t, subtotal: subitem };
+      return { id: c.id, nama: c.nama, kategori: c.kategori, harga: h, qty: c.qty, disc_bpjs: t, subtotal: subitem };
     })
   };
   payload.total = sub - disc;
@@ -519,6 +540,7 @@ function populateReceiptPreview() {
   listHtml.innerHTML = '';
   d.data.items.forEach(i => {
     const isDiscounted = i.disc_bpjs > 0;
+    const censoredName = censorItemName(i.nama, i.kategori, i.id);
     const subtotalHtml = isDiscounted
       ? `<div class="d-flex flex-column text-end"><del class="text-muted small">${formatRp(i.harga * i.qty)}</del><span class="fw-bold">${formatRp(i.subtotal)}</span></div>`
       : `<div class="fw-bold">${formatRp(i.subtotal)}</div>`;
@@ -526,7 +548,7 @@ function populateReceiptPreview() {
     listHtml.innerHTML += `
        <div class="d-flex justify-content-between align-items-start mb-2">
          <div class="d-flex flex-column w-75">
-           <span class="fw-bold text-dark">${i.nama}</span>
+           <span class="fw-bold text-dark">${censoredName}</span>
            <span class="text-muted small">${i.qty} x ${formatRp(i.harga)} ${isDiscounted ? '<span class="text-success ms-1">(BPJS)</span>' : ''}</span>
          </div>
          ${subtotalHtml}
@@ -690,7 +712,7 @@ async function printBluetooth() {
 
   // Cek koneksi dulu
   if (!btDevice || !btDevice.gatt.connected || !btCharacteristic) {
-    const connected = await connectBluetoothPrinter();
+    const connected = await toggleBluetoothPrinter();
     if (!connected) return; // Jika gagal konek, berhenti
   }
 
@@ -719,7 +741,7 @@ async function printBluetooth() {
     // ITEM
     d.data.items.forEach(i => {
       // Baris 1: Nama Item
-      let nama = i.nama;
+      let nama = censorItemName(i.nama, i.kategori, i.id);
       if (nama.length > 32) nama = nama.substring(0, 32); 
       esc.text(nama + "\n");
       

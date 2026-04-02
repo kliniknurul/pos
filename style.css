@@ -389,100 +389,115 @@ body {
   vertical-align: middle;
 }
 
-/* Print Area - Fix Thermal Printer 58mm */
+/* --- AREA PRINT (THERMAL 58mm & LAPTOP PREVIEW) --- */
 @media print {
   @page {
     margin: 0;
     size: 58mm auto;
   }
 
-  html,
-  body {
-    width: 58mm !important;
+  html, body {
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background-color: #fff !important;
   }
 
-  /* Sembunyikan SEMUA elemen di luar receiptModal agar tidak ada halaman kosong (blank pages) */
-  body>*:not(#receiptModal) {
+  /* Sembunyikan SEMUA elemen di luar receiptModal */
+  body > *:not(#receiptModal) {
     display: none !important;
   }
 
-  /* Pastikan receiptModal dirender sebagai block biasa, bukan overlay */
+  /* Munculkan modal receipt sebagai dokumen normal (normal document flow) */
   #receiptModal {
     display: block !important;
-    position: static !important;
+    position: relative !important;
     opacity: 1 !important;
-    background: transparent !important;
+    background: #fff !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
   }
 
-  /* Sembunyikan Backdrop Bootstrap */
-  .modal-backdrop {
-    display: none !important;
-  }
-
-  /* Sembunyikan header dan footer pada modal */
+  /* Sembunyikan backdrop bootstrap dan UI kontrol modal */
+  .modal-backdrop,
   #receiptModal .modal-header,
   #receiptModal .modal-footer {
     display: none !important;
   }
 
-  /* Atur ukuran dialog mengikuti kertas 58mm */
-  #receiptModal .modal-dialog {
-    max-width: 58mm !important;
-    width: 58mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    transform: none !important;
-  }
-
-  /* Hapus styling card modal */
+  /* Hapus limit ukuran box model pada konten modal bawaan */
+  #receiptModal .modal-dialog,
   #receiptModal .modal-content,
   #receiptModal .modal-body {
+    margin: 0 !important;
+    padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
+    width: 100% !important;
+    max-width: none !important;
+    transform: none !important;
   }
 
-  /* Konfigurasi area print */
+  /* Styling kontainer print utama (Persis Preview & Ukuran Kertas 58mm) */
   #print-area {
     width: 58mm !important;
     max-width: 58mm !important;
-    padding: 2mm !important;
-    /* Jarak aman di pinggir kertas, timpa padding-4 dari bootstrap */
+    margin: 0 auto !important; /* Membuat posisinya ke tengah jika di-print di A4 laptop, namun pas jika diset 58mm */
+    padding: 3mm 4mm !important; /* Beri margin kiri kanan agar tidak terlalu mepet dengan ujung kertas thermal */
     box-sizing: border-box !important;
+    
     color: #000 !important;
-    /* Hitam murni agar tajam */
-    font-family: 'Courier New', Courier, monospace !important;
-    /* Font monospace paling ideal untuk thermal */
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    font-size: 12px !important; /* Diperbesar agar sesuai preview */
+    line-height: 1.4 !important;
+  }
+
+  /* Force teks solid black untuk hasil print pemanas thermal yg tajam */
+  #print-area * {
+    color: #000 !important;
+  }
+
+  /* Hierarki Font Spesifik Preview */
+  #print-area h5 {
+    font-size: 16px !important;
+    font-weight: bold !important;
+    margin-bottom: 2px !important;
+  }
+
+  #print-area .small {
     font-size: 11px !important;
   }
 
-  /* Paksa semua teks di struk jadi hitam pekat (menghindari hasil print abu-abu/samar/dithering) */
-  #print-area * {
-    color: #000 !important;
-    font-family: 'Courier New', Courier, monospace !important;
+  #print-area .fw-bold {
+    font-weight: bold !important;
   }
 
-  /* Perjelas garis patah-patah hitam pekat */
   .dashed-hr {
     border-top: 1px dashed #000 !important;
-    margin: 5px 0 !important;
+    margin: 8px 0 !important;
   }
 
   #print-area .border-top {
     border-top: 1px dashed #000 !important;
   }
 
-  /* Pertegas text bold */
-  .fw-bold {
-    font-weight: bold !important;
+  /* Cegah item produk terpotong jadi dua di antara jeda halaman */
+  #print-items-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  #print-items-list .d-flex {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Hilangkan background badge (seperti text BPJS hijau) pada mode cetak */
+  #print-area .text-success {
+    font-weight: 600 !important;
+    font-size: 10px !important;
   }
 }

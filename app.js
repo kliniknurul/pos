@@ -201,7 +201,16 @@ function switchView(viewId) {
 // --- PIN SYSTEM ---
 let currentPin = ''; let sessionPin = ''; let PIN_CACHE = {};
 
-function openPinModal() { clearPinUI(); dom.pinModal.show(); }
+function openPinModal() {
+  const cachedPin = localStorage.getItem('auth_pin_cache');
+  if (cachedPin) {
+    currentPin = atob(cachedPin);
+    submitPin(true); // true = dipanggil dari cache auto-login
+    return;
+  }
+  clearPinUI(); dom.pinModal.show(); 
+}
+
 function handlePinInput(n) {
   if (currentPin.length < 4) {
     currentPin += n; updatePinIndicators();
@@ -214,24 +223,35 @@ function updatePinIndicators() {
 }
 function clearPinUI() { currentPin = ''; updatePinIndicators(); }
 
-async function submitPin() {
+async function submitPin(fromCache = false) {
   if (currentPin.length === 0) return;
-  document.getElementById('pin-loading').classList.remove('d-none');
+  dom.loading.style.display = 'flex'; // Pakai global loading bukan modal loading saja
+  if (!fromCache) document.getElementById('pin-loading').classList.remove('d-none');
 
   if (PIN_CACHE[currentPin]) {
-    document.getElementById('pin-loading').classList.add('d-none');
+    dom.loading.style.display = 'none';
+    if (!fromCache) { document.getElementById('pin-loading').classList.add('d-none'); dom.pinModal.hide(); }
     processPinSuccess(PIN_CACHE[currentPin]); return;
   }
 
   const res = await fetchApi('checkPIN', null, currentPin);
-  document.getElementById('pin-loading').classList.add('d-none');
+  dom.loading.style.display = 'none';
+  if (!fromCache) document.getElementById('pin-loading').classList.add('d-none');
   
   if (res.success) {
     PIN_CACHE[currentPin] = { name: res.name, role: res.role };
     sessionPin = currentPin;
+    localStorage.setItem('auth_pin_cache', btoa(currentPin)); 
+    if (!fromCache) dom.pinModal.hide();
     processPinSuccess({ name: res.name, role: res.role });
   } else {
-    showPinError(res.message);
+    localStorage.removeItem('auth_pin_cache');
+    if (fromCache) {
+      // Jika auto-login gagal, buka modal agar input manual
+      clearPinUI(); dom.pinModal.show();
+    } else {
+      showPinError(res.message);
+    }
   }
 }
 
@@ -428,6 +448,37 @@ async function doCheckout(cashierName, passedPin) {
       if (gp && String(gp.Kategori).toLowerCase() === 'barang') gp.Stok -= c.qty; 
     });
 
+    // OPTIMISTIC UI: Insert to History Cache
+    try {
+      const cachedHistory = localStorage.getItem('pos_history_cache_hari_ini');
+      if (cachedHistory) {
+         let histData = JSON.parse(cachedHistory);
+         let newTrx = {
+             "Tanggal": LAST_TRANSACTION.date,
+             "ID_Transaksi": LAST_TRANSACTION.id,
+             "Tipe_Pasien (Umum/BPJS)": LAST_TRANSACTION.customerType,
+             "Total_Bayar": LAST_TRANSACTION.totals.total,
+             "Metode_Bayar": payload.method,
+             "Nama_Kasir": LAST_TRANSACTION.cashier,
+             "Detail_JSON": JSON.stringify(payload.items)
+         };
+         histData.transactions.unshift(newTrx); 
+         
+         if(LAST_TRANSACTION.totals.total > 0) {
+            let newArus = {
+               "Tanggal": LAST_TRANSACTION.date,
+               "Kategori (Masuk Non-Jual/Keluar/Penjualan)": "Penjualan",
+               "Nominal": LAST_TRANSACTION.totals.total,
+               "Akun": payload.method,
+               "PIC": LAST_TRANSACTION.cashier,
+               "Detail_JSON": JSON.stringify({type: 'penjualan', items: payload.items})
+            };
+            histData.arusKas.unshift(newArus);
+         }
+         localStorage.setItem('pos_history_cache_hari_ini', JSON.stringify(histData));
+      }
+    } catch(e) {}
+
     populateReceiptPreview();
     resetTransaction();
     dom.receiptModal.show();
@@ -516,7 +567,17 @@ class EscPosEncoder {
 let btDevice = null;
 let btCharacteristic = null;
 
-async function connectBluetoothPrinter() {
+async function toggleBluetoothPrinter() {
+  // Jika sudah konek, maka fungsi ini bertindak sebagai Disconnect
+  if (btDevice && btDevice.gatt.connected) {
+    btDevice.gatt.disconnect();
+    document.getElementById('bt-status').innerHTML = '<i class="fa-brands fa-bluetooth text-muted"></i> <span class="text-muted small ms-1">Printer Putus</span>';
+    document.getElementById('btn-bt-connect').innerText = "Hubungkan";
+    document.getElementById('btn-bt-connect').classList.replace('btn-outline-danger', 'btn-outline-primary');
+    btCharacteristic = null;
+    return false;
+  }
+
   try {
     if (!navigator.bluetooth) throw new Error("Web Bluetooth tidak didukung. Gunakan Chrome Android/PC.");
 
@@ -540,7 +601,9 @@ async function connectBluetoothPrinter() {
     }
 
     btDevice.addEventListener('gattserverdisconnected', () => {
-      document.getElementById('bt-status').innerHTML = '<i class="fa-solid fa-bluetooth text-muted"></i> <span class="text-muted small ms-1">Printer Putus</span>';
+      document.getElementById('bt-status').innerHTML = '<i class="fa-brands fa-bluetooth text-muted"></i> <span class="text-muted small ms-1">Printer Putus</span>';
+      document.getElementById('btn-bt-connect').innerText = "Hubungkan";
+      document.getElementById('btn-bt-connect').classList.replace('btn-outline-danger', 'btn-outline-primary');
       btCharacteristic = null;
     });
 
@@ -557,6 +620,8 @@ async function connectBluetoothPrinter() {
     if (!btCharacteristic) throw new Error("Karakteristik Bluetooth untuk Print tidak ditemukan");
 
     document.getElementById('bt-status').innerHTML = '<i class="fa-solid fa-bluetooth text-success"></i> <span class="text-success small ms-1 fw-bold">Konek: ' + btDevice.name + '</span>';
+    document.getElementById('btn-bt-connect').innerText = "Putuskan";
+    document.getElementById('btn-bt-connect').classList.replace('btn-outline-primary', 'btn-outline-danger');
     return true;
   } catch (err) {
     console.error(err);
@@ -564,7 +629,7 @@ async function connectBluetoothPrinter() {
     if (err.name !== 'NotFoundError' && err.message !== 'User cancelled the requestDevice() chooser.') {
       alert("Koneksi Bluetooth Gagal: " + err.message);
     }
-    document.getElementById('bt-status').innerHTML = '<i class="fa-solid fa-bluetooth text-danger"></i> <span class="text-danger small ms-1">Gagal Konek</span>';
+    document.getElementById('bt-status').innerHTML = '<i class="fa-brands fa-bluetooth text-danger"></i> <span class="text-danger small ms-1">Gagal Konek</span>';
     return false;
   }
 }
@@ -679,28 +744,16 @@ function reprintTransaction(t) {
 }
 
 // --- RIWAYAT DATA API ---
-async function loadHistoryData() {
-  document.getElementById('table-history-trx').innerHTML = '<tr><td colspan="8" class="text-center py-4">Memuat...</td></tr>';
-  document.getElementById('table-history-arus').innerHTML = '<tr><td colspan="6" class="text-center py-4">Memuat...</td></tr>';
-  const filter = document.getElementById('history-filter') ? document.getElementById('history-filter').value : 'hari_ini';
-
-  const res = await fetchApi('getHistoryData', filter);
-  
+function renderHistoryData(data) {
   const trxBody = document.getElementById('table-history-trx');
   const aruBody = document.getElementById('table-history-arus');
 
-  if (!res.success) {
-    trxBody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4"><i class="fa-solid fa-triangle-exclamation me-2"></i>${res.message}</td></tr>`;
-    aruBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Gagal Memuat</td></tr>`;
-    return;
-  }
-
   // TRANSAKSI
   trxBody.innerHTML = '';
-  if (res.data.transactions.length === 0) {
+  if (data.transactions.length === 0) {
     trxBody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">Tidak ada transaksi pada periode ini.</td></tr>';
   }
-  res.data.transactions.forEach((t, i) => {
+  data.transactions.forEach((t, i) => {
     const detailId = 'trxDetail' + i;
     let itemsHtml = '<div class="text-muted small">Detail tidak tersedia</div>';
     try {
@@ -743,10 +796,10 @@ async function loadHistoryData() {
 
   // ARUS KAS
   aruBody.innerHTML = '';
-  if (res.data.arusKas.length === 0) {
+  if (data.arusKas.length === 0) {
     aruBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Tidak ada arus kas pada periode ini.</td></tr>';
   }
-  res.data.arusKas.forEach((a, j) => {
+  data.arusKas.forEach((a, j) => {
     const arusDetailId = 'arusDetail' + j;
     const kategori = a['Kategori (Masuk Non-Jual/Keluar/Penjualan)'] || '';
     const isIncome = kategori === 'Penjualan' || kategori.includes('Masuk');
@@ -792,9 +845,40 @@ async function loadHistoryData() {
       </td>
     </tr>`;
   });
+}
 
-  IS_RIWAYAT_STALE = false;
-  RIWAYAT_LAST_FILTER = filter;
+async function loadHistoryData() {
+  const filter = document.getElementById('history-filter') ? document.getElementById('history-filter').value : 'hari_ini';
+  
+  // Optimistic UI Caching
+  const cached = localStorage.getItem('pos_history_cache_' + filter);
+  if (cached) {
+    try {
+      renderHistoryData(JSON.parse(cached));
+    } catch(e) {}
+  } else {
+    document.getElementById('table-history-trx').innerHTML = '<tr><td colspan="8" class="text-center py-4">Memuat...</td></tr>';
+    document.getElementById('table-history-arus').innerHTML = '<tr><td colspan="6" class="text-center py-4">Memuat...</td></tr>';
+  }
+
+  try {
+    const res = await fetchApi('getHistoryData', filter);
+    if (!res.success) {
+      if(!cached) {
+        document.getElementById('table-history-trx').innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4"><i class="fa-solid fa-triangle-exclamation me-2"></i>${res.message}</td></tr>`;
+        document.getElementById('table-history-arus').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Gagal Memuat</td></tr>`;
+      }
+      return;
+    }
+    
+    // Update cache and render silently in background
+    localStorage.setItem('pos_history_cache_' + filter, JSON.stringify(res.data));
+    renderHistoryData(res.data);
+    IS_RIWAYAT_STALE = false;
+    RIWAYAT_LAST_FILTER = filter;
+  } catch(err) {
+      console.error(err);
+  }
 }
 
 // --- MANAJEMEN STOK ---

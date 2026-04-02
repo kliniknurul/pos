@@ -397,9 +397,18 @@ body {
    yang menyebabkan inkonsistensi antara Laptop dan HP.
    ====================================================== */
 
-/* Saat di layar biasa, sembunyikan container clone */
+/* Saat di layar biasa, taruh clone di luar layar (JANGAN display:none,
+   karena elemen display:none tidak masuk render tree dan beberapa
+   browser mobile akan melewatkannya saat generate snapshot print) */
 #print-clone {
-  display: none;
+  position: fixed;
+  top: -99999px;
+  left: -99999px;
+  width: 58mm;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @media print {
@@ -434,6 +443,9 @@ body {
     left: 0 !important;
     width: 58mm !important;
     max-width: 58mm !important;
+    height: auto !important;
+    overflow: visible !important;
+    opacity: 1 !important;
     margin: 0 !important;
     padding: 2mm 3mm !important; /* Jarak aman dari tepi kertas thermal */
     box-sizing: border-box !important;

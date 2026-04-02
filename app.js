@@ -480,16 +480,27 @@ function printReceipt() {
   // 1. Salin konten struk ke container clone
   clone.innerHTML = source.innerHTML;
 
-  // 2. Tunggu sebentar agar browser selesai render layout clone
-  requestAnimationFrame(() => {
-    // 3. Cetak
-    window.print();
+  // 2. Force browser reflow — KRITIS untuk Android!
+  //    Tanpa ini, browser mobile bisa skip konten yang baru di-insert
+  //    saat generate snapshot print.
+  void clone.offsetHeight;
 
-    // 4. Bersihkan clone setelah dialog print selesai/ditutup
-    // Gunakan setTimeout karena window.print() bersifat blocking di desktop
-    // tapi async di beberapa mobile browser
-    setTimeout(() => { clone.innerHTML = ''; }, 1000);
-  });
+  // 3. Fungsi bersih-bersih setelah print selesai
+  function cleanup() {
+    clone.innerHTML = '';
+    window.removeEventListener('afterprint', cleanup);
+  }
+
+  // 4. Dengarkan event 'afterprint' untuk cleanup yang reliable
+  //    (bekerja di desktop DAN mobile)
+  window.addEventListener('afterprint', cleanup);
+
+  // 5. Beri delay kecil agar paint selesai, lalu cetak
+  setTimeout(() => {
+    window.print();
+    // Fallback cleanup jika afterprint tidak fire (browser lama)
+    setTimeout(cleanup, 3000);
+  }, 150);
 }
 
 function reprintTransaction(t) {

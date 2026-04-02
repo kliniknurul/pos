@@ -471,37 +471,184 @@ function populateReceiptPreview() {
 }
 
 function printReceipt() {
-  // Strategi: Clone konten #print-area ke #print-clone (di luar Modal)
-  // agar tidak terganggu oleh transform/position Bootstrap Modal.
+  // Fungsi lama tetap ada sebagai fallback (Opsi Cadangan)
   const source = document.getElementById('print-area');
   const clone = document.getElementById('print-clone');
-  if (!source || !clone) { window.print(); return; } // Fallback
+  if (!source || !clone) { window.print(); return; } 
 
-  // 1. Salin konten struk ke container clone
   clone.innerHTML = source.innerHTML;
-
-  // 2. Force browser reflow — KRITIS untuk Android!
-  //    Tanpa ini, browser mobile bisa skip konten yang baru di-insert
-  //    saat generate snapshot print.
   void clone.offsetHeight;
 
-  // 3. Fungsi bersih-bersih setelah print selesai
   function cleanup() {
     clone.innerHTML = '';
     window.removeEventListener('afterprint', cleanup);
   }
-
-  // 4. Dengarkan event 'afterprint' untuk cleanup yang reliable
-  //    (bekerja di desktop DAN mobile)
   window.addEventListener('afterprint', cleanup);
 
-  // 5. Beri delay kecil agar paint selesai, lalu cetak
   setTimeout(() => {
     window.print();
-    // Fallback cleanup jika afterprint tidak fire (browser lama)
     setTimeout(cleanup, 3000);
   }, 150);
 }
+
+/* ====================================================
+   PRINTER BLUETOOTH (ESC/POS)
+   ==================================================== */
+
+// Kelas sederhana pembentuk instruksi byte ESC/POS
+class EscPosEncoder {
+  constructor() { this.buffer = []; }
+  init() { this.buffer.push(0x1B, 0x40); return this; }
+  alignLeft() { this.buffer.push(0x1B, 0x61, 0x00); return this; }
+  alignCenter() { this.buffer.push(0x1B, 0x61, 0x01); return this; }
+  alignRight() { this.buffer.push(0x1B, 0x61, 0x02); return this; }
+  bold(on) { this.buffer.push(0x1B, 0x45, on ? 1 : 0); return this; }
+  newline(count = 1) { for (let i = 0; i < count; i++) this.buffer.push(0x0A); return this; }
+  text(str) {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(str);
+    this.buffer.push(...bytes);
+    return this;
+  }
+  generate() { return new Uint8Array(this.buffer); }
+}
+
+let btDevice = null;
+let btCharacteristic = null;
+
+async function connectBluetoothPrinter() {
+  try {
+    if (!navigator.bluetooth) throw new Error("Web Bluetooth tidak didukung. Gunakan Chrome Android/PC.");
+
+    document.getElementById('bt-status').innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span> <span class="text-primary small ms-1">Mencari...</span>';
+
+    // Coba reconnect ke device jika API getDevices tersedia (menghindari popup berulang kali)
+    if (!btDevice && navigator.bluetooth.getDevices) {
+      const devices = await navigator.bluetooth.getDevices();
+      if (devices.length > 0) btDevice = devices[0];
+    }
+
+    if (!btDevice) {
+      btDevice = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          '000018f0-0000-1000-8000-00805f9b34fb',
+          'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455'
+        ]
+      });
+    }
+
+    btDevice.addEventListener('gattserverdisconnected', () => {
+      document.getElementById('bt-status').innerHTML = '<i class="fa-solid fa-bluetooth text-muted"></i> <span class="text-muted small ms-1">Printer Putus</span>';
+      btCharacteristic = null;
+    });
+
+    if (!btDevice.gatt.connected) await btDevice.gatt.connect();
+
+    const server = btDevice.gatt;
+    const services = await server.getPrimaryServices();
+    let service = services.find(s => s.uuid.includes('18f0') || s.uuid.includes('e781') || s.uuid.includes('4953'));
+    if (!service) service = services[0];
+
+    const characteristics = await service.getCharacteristics();
+    btCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
+
+    if (!btCharacteristic) throw new Error("Karakteristik Bluetooth untuk Print tidak ditemukan");
+
+    document.getElementById('bt-status').innerHTML = '<i class="fa-solid fa-bluetooth text-success"></i> <span class="text-success small ms-1 fw-bold">Konek: ' + btDevice.name + '</span>';
+    return true;
+  } catch (err) {
+    console.error(err);
+    // Ignore error if user cancelled the picker
+    if (err.name !== 'NotFoundError' && err.message !== 'User cancelled the requestDevice() chooser.') {
+      alert("Koneksi Bluetooth Gagal: " + err.message);
+    }
+    document.getElementById('bt-status').innerHTML = '<i class="fa-solid fa-bluetooth text-danger"></i> <span class="text-danger small ms-1">Gagal Konek</span>';
+    return false;
+  }
+}
+
+function rightAlignText(left, right, maxLen = 32) {
+  const spaces = maxLen - left.length - right.length;
+  if (spaces <= 0) return left + " " + right; // fallback
+  return left + " ".repeat(spaces) + right;
+}
+
+async function printBluetooth() {
+  if (!LAST_TRANSACTION) return;
+  const d = LAST_TRANSACTION;
+
+  // Cek koneksi dulu
+  if (!btDevice || !btDevice.gatt.connected || !btCharacteristic) {
+    const connected = await connectBluetoothPrinter();
+    if (!connected) return; // Jika gagal konek, berhenti
+  }
+
+  try {
+    const esc = new EscPosEncoder();
+    esc.init();
+    
+    // HEADER
+    esc.alignCenter();
+    esc.bold(true);
+    esc.text(GLOBAL_PROFILE.Nama_Bisnis ? GLOBAL_PROFILE.Nama_Bisnis + "\n" : "POLINDES\n");
+    esc.bold(false);
+    if(GLOBAL_PROFILE.Alamat) esc.text(GLOBAL_PROFILE.Alamat + "\n");
+    esc.text("================================\n"); // 32 char wide
+    
+    // INFO TRANSAKSI
+    esc.alignLeft();
+    esc.text("Waktu : " + (d.waktu || d.date) + "\n");
+    if(d.id) esc.text("ID Trx: " + d.id + "\n");
+    esc.text("Kasir : " + d.cashier + "\n");
+    esc.text("Tipe  : " + (d.customerType === 'BPJS' ? 'Pasien BPJS' : 'Pasien Umum') + "\n");
+    esc.text("--------------------------------\n");
+    
+    // ITEM
+    d.data.items.forEach(i => {
+      // Baris 1: Nama Item
+      // Pastikan nama tidak > 32 char, jika ya potong
+      let nama = i.nama;
+      if (nama.length > 32) nama = nama.substring(0, 32); 
+      esc.text(nama + "\n");
+      
+      // Baris 2: Qty x Harga ....... Subtotal
+      let qtyStr = `${i.qty} x ${i.harga.toLocaleString('id-ID')}`;
+      if (i.disc_bpjs > 0) qtyStr += " (BPJS)";
+      let subStr = String(i.subtotal.toLocaleString('id-ID'));
+      
+      esc.text(rightAlignText(qtyStr, subStr) + "\n");
+    });
+    
+    esc.text("--------------------------------\n");
+    
+    // TOTAL
+    esc.bold(true);
+    esc.text(rightAlignText("TOTAL:", String(d.totals.total.toLocaleString('id-ID'))) + "\n");
+    esc.bold(false);
+    
+    esc.text("================================\n");
+    esc.alignCenter();
+    esc.text((GLOBAL_PROFILE.Pesan_Struk || "Terima Kasih Atas Kunjungan Anda") + "\n");
+    esc.newline(3); // extra feed buat sobekan
+    
+    const payload = esc.generate();
+    
+    // Kirim secara chunk (agar tidak terpotong oleh Bluetooth MTU limit -- biasanya 512 bytes limit)
+    // 100 bytes is very safe per chunk
+    const MAX_CHUNK = 100;
+    for (let i = 0; i < payload.length; i += MAX_CHUNK) {
+      await btCharacteristic.writeValue(payload.slice(i, i + MAX_CHUNK));
+    }
+    
+    showToast("Print Bluetooth Berhasil!");
+  } catch (err) {
+    console.error(err);
+    alert("Gagal print bluetooth: " + err.message);
+  }
+}
+
 
 function reprintTransaction(t) {
   try {

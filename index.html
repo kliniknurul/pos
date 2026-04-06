@@ -40,7 +40,7 @@
           <i class="fa-solid fa-plus fs-5"></i>
         </div>
         <h4 class="m-0 fw-bold text-dark" id="app-title">Polindes POS</h4>
-        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.2.0</span>
+        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.2.1</span>
       </div>
       <div id="sync-status" class="text-success small fw-bold">
         <i class="fa-solid fa-cloud-check me-1"></i> Online
@@ -70,11 +70,6 @@
           </button>
           <button class="nav-item-btn" onclick="switchView('owner')" title="Menu Owner">
             <i class="fa-solid fa-crown nav-icon"></i><span class="nav-text">Menu Khusus Owner</span>
-          </button>
-
-          <hr class="w-75 border-secondary my-2 opacity-25">
-          <button class="nav-item-btn" onclick="showPrinterGuide()" title="Panduan Printer" id="btn-bt-setup">
-            <i class="fa-solid fa-print nav-icon"></i><span class="nav-text">Panduan Printer</span>
           </button>
         </div>
       </nav>
@@ -277,6 +272,7 @@
                     <tr>
                       <th>ID</th>
                       <th>Nama</th>
+                      <th>Inisial Nota</th>
                       <th>Kategori</th>
                       <th>Harga</th>
                       <th>Stok</th>
@@ -642,6 +638,10 @@
             <label class="form-label fw-bold">Nama Item</label>
             <input type="text" class="form-control" id="prod-form-name">
           </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Inisial / Nama Singkat di Nota <small class="text-muted fw-normal">(Opsional)</small></label>
+            <input type="text" class="form-control" id="prod-form-inisial" placeholder="Kosongkan jika pakai nama asli">
+          </div>
           <div class="row mb-3">
             <div class="col-6">
               <label class="form-label fw-bold">Kategori</label>
@@ -730,7 +730,7 @@
                 class="text-dark"></span></div>
           </div>
           <div class="text-center mt-4 mb-2">
-            <p class="mb-0 small text-muted font-italic">Terima kasih atas kunjungan Anda!</p>
+            <p class="mb-0 small text-muted font-italic" id="print-biz-footer">Terima kasih atas kunjungan Anda!</p>
           </div>
         </div>
         <div class="modal-footer bg-light px-3 py-3 d-flex flex-column gap-2">

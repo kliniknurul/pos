@@ -202,10 +202,16 @@ function switchView(viewId) {
 let currentPin = ''; let sessionPin = ''; let PIN_CACHE = {};
 
 function openPinModal() {
+  // A.8: Owner access → SELALU minta PIN, tidak pakai cache
+  if (PENDING_ACTION && PENDING_ACTION.type === 'openView' && PENDING_ACTION.view === 'owner') {
+    clearPinUI(); dom.pinModal.show();
+    return;
+  }
+  // Aksi lain (checkout, cashEntry, dll) → boleh auto-login dari cache
   const cachedPin = localStorage.getItem('auth_pin_cache');
   if (cachedPin) {
     currentPin = atob(cachedPin);
-    submitPin(true); // true = dipanggil dari cache auto-login
+    submitPin(true);
     return;
   }
   clearPinUI(); dom.pinModal.show(); 
@@ -384,7 +390,7 @@ function addToCart(id) {
     if (s === 'Full') tg = p.Harga;
     else if (s === 'Sebagian') tg = p.Nilai_Tanggungan;
 
-    CART.push({ id: p.ID, nama: p.Nama, kategori: String(p.Kategori).toLowerCase(), harga: parseFloat(p.Harga) || 0, qty: 1, tanggungan: tg || 0 });
+    CART.push({ id: p.ID, nama: p.Nama, inisial: p.Inisial || '', kategori: String(p.Kategori).toLowerCase(), harga: parseFloat(p.Harga) || 0, qty: 1, tanggungan: tg || 0 });
   }
   renderCart();
 }
@@ -456,7 +462,7 @@ async function doCheckout(cashierName, passedPin) {
       const h = c.harga; const t = IS_BPJS ? Math.min(c.tanggungan, h) : 0;
       const subitem = (h * c.qty) - (t * c.qty);
       sub += h * c.qty; disc += t * c.qty;
-      return { id: c.id, nama: c.nama, kategori: c.kategori, harga: h, qty: c.qty, disc_bpjs: t, subtotal: subitem };
+      return { id: c.id, nama: c.nama, inisial: c.inisial || '', kategori: c.kategori, harga: h, qty: c.qty, disc_bpjs: t, subtotal: subitem };
     })
   };
   payload.total = sub - disc;
@@ -531,6 +537,12 @@ function resetTransaction() {
 function populateReceiptPreview() {
   if (!LAST_TRANSACTION) return;
   const d = LAST_TRANSACTION;
+
+  // A.9: Update nota header dari profil terkini
+  document.getElementById('print-biz-name').innerText = GLOBAL_PROFILE.Nama_Bisnis || '';
+  document.getElementById('print-biz-address').innerText = GLOBAL_PROFILE.Alamat || '';
+  document.getElementById('print-biz-phone').innerText = GLOBAL_PROFILE.Telepon || '';
+
   document.getElementById('print-date').innerText = d.date;
   document.getElementById('print-trx-id').innerText = d.id;
   document.getElementById('print-cashier').innerText = d.cashier;
@@ -540,7 +552,9 @@ function populateReceiptPreview() {
   listHtml.innerHTML = '';
   d.data.items.forEach(i => {
     const isDiscounted = i.disc_bpjs > 0;
-    const censoredName = censorItemName(i.nama, i.kategori, i.id);
+    // A.10: Gunakan inisial jika ada, fallback ke nama asli
+    const displayName = i.inisial || i.nama;
+    const censoredName = censorItemName(displayName, i.kategori, i.id);
     const subtotalHtml = isDiscounted
       ? `<div class="d-flex flex-column text-end"><del class="text-muted small">${formatRp(i.harga * i.qty)}</del><span class="fw-bold">${formatRp(i.subtotal)}</span></div>`
       : `<div class="fw-bold">${formatRp(i.subtotal)}</div>`;
@@ -556,16 +570,26 @@ function populateReceiptPreview() {
      `;
   });
   document.getElementById('print-total').innerText = formatRp(d.totals.total);
+
+  // A.9: Update pesan bawah nota dari profil
+  document.getElementById('print-biz-footer').innerText = GLOBAL_PROFILE.Pesan_Nota || 'Terima kasih atas kunjungan Anda!';
 }
 
 function printReceipt() {
-  // Fungsi lama tetap ada sebagai fallback (Opsi Cadangan)
+  // A.1: Pastikan data struk ada sebelum print
+  if (!LAST_TRANSACTION) {
+    showToast('Tidak ada data struk untuk dicetak.', 'warning');
+    return;
+  }
+  // Re-populate untuk memastikan data terkini (termasuk profil bisnis)
+  populateReceiptPreview();
+
   const source = document.getElementById('print-area');
   const clone = document.getElementById('print-clone');
   if (!source || !clone) { window.print(); return; } 
 
   clone.innerHTML = source.innerHTML;
-  void clone.offsetHeight;
+  void clone.offsetHeight; // Force reflow
 
   function cleanup() {
     clone.innerHTML = '';
@@ -741,7 +765,8 @@ async function printBluetooth() {
     // ITEM
     d.data.items.forEach(i => {
       // Baris 1: Nama Item
-      let nama = censorItemName(i.nama, i.kategori, i.id);
+      // A.10: Gunakan inisial jika ada
+      let nama = censorItemName(i.inisial || i.nama, i.kategori, i.id);
       if (nama.length > 32) nama = nama.substring(0, 32); 
       esc.text(nama + "\n");
       
@@ -762,7 +787,7 @@ async function printBluetooth() {
     
     esc.text("--------------------------------\n");
     esc.alignCenter();
-    esc.text((GLOBAL_PROFILE.Pesan_Struk || "Terima kasih atas kunjungan Anda!") + "\n");
+    esc.text((GLOBAL_PROFILE.Pesan_Nota || "Terima kasih atas kunjungan Anda!") + "\n");
     esc.newline(3); // extra feed buat sobekan
     
     const payload = esc.generate();
@@ -957,6 +982,7 @@ function renderMasterStok() {
     tb.innerHTML += `<tr>
         <td><small class="text-muted">${p.ID}</small></td>
         <td class="fw-bold">${p.Nama}</td>
+        <td class="text-muted small">${p.Inisial || '<span class="opacity-50">-</span>'}</td>
         <td>${p.Kategori}</td>
         <td>${formatRp(p.Harga)} ${satuanText}</td>
         <td class="${isB && p.Stok <= 5 ? 'text-danger fw-bold' : ''}">${isB ? p.Stok : '-'}</td>
@@ -1029,6 +1055,7 @@ function openAddProductModal() {
   document.getElementById('btn-prod-delete').classList.add('d-none');
   document.getElementById('prod-form-id').value = "";
   document.getElementById('prod-form-name').value = "";
+  document.getElementById('prod-form-inisial').value = "";
   document.getElementById('prod-form-uom').value = "";
   document.getElementById('prod-form-price').value = 0;
 
@@ -1052,6 +1079,7 @@ function editProduct(prodJsonStr) {
 
   document.getElementById('prod-form-id').value = p.ID;
   document.getElementById('prod-form-name').value = p.Nama;
+  document.getElementById('prod-form-inisial').value = p.Inisial || '';
   document.getElementById('prod-form-cat').value = p.Kategori;
   document.getElementById('prod-form-uom').value = p.Satuan || '';
   document.getElementById('prod-form-price').value = p.Harga;
@@ -1081,6 +1109,7 @@ async function saveProductForm() {
   const payload = {
     id: document.getElementById('prod-form-id').value,
     nama: document.getElementById('prod-form-name').value,
+    inisial: document.getElementById('prod-form-inisial').value,
     kategori: document.getElementById('prod-form-cat').value,
     satuan: document.getElementById('prod-form-uom').value,
     harga: parseFloat(document.getElementById('prod-form-price').value) || 0,
@@ -1099,7 +1128,7 @@ async function saveProductForm() {
     
     if (!isNew && payload.kategori === 'Barang' && addStockVal !== 0) {
       const stockPayload = [{ id: payload.id, qty_added: addStockVal, reason: document.getElementById('prod-form-stock-reason').value || "Manual Update" }];
-      const sRes = await fetchApi('updateStock', stockPayload);
+      const sRes = await fetchApi('updateStock', stockPayload, sessionPin);
       
       if (sRes.success) { 
         GLOBAL_PRODUCTS = sRes.products; renderMasterStok(); renderProducts('all', ''); 
@@ -1176,7 +1205,7 @@ async function loadReportData() {
   }
 
   // --- RENDER CHARTS ---
-  renderCharts(data.chartData);
+  renderCharts({ dailyBreakdown: data.dailyBreakdown, categoryBreakdown: data.categoryBreakdown });
 }
 
 function renderCharts(chartData) {
@@ -1297,12 +1326,18 @@ async function saveProfileSetup() {
   if (res.success) {
     GLOBAL_PROFILE = res.profile;
     showToast("Profil berhasil disimpan!");
+    // A.9: Update semua elemen yang menggunakan data profil
     dom.appTitle.innerText = GLOBAL_PROFILE.Nama_Bisnis || 'Polindes POS';
+    document.getElementById('print-biz-name').innerText = GLOBAL_PROFILE.Nama_Bisnis || '';
+    document.getElementById('print-biz-address').innerText = GLOBAL_PROFILE.Alamat || '';
+    document.getElementById('print-biz-phone').innerText = GLOBAL_PROFILE.Telepon || '';
+    document.getElementById('print-biz-footer').innerText = GLOBAL_PROFILE.Pesan_Nota || 'Terima kasih atas kunjungan Anda!';
   } else showToast(res.message, 'error');
 }
 
 function lockOwnerArea() {
   sessionPin = '';
+  localStorage.removeItem('auth_pin_cache'); // A.8: Hapus cache PIN saat kunci owner
   switchView('kasir');
   showToast("Akses Owner telah dikunci.", "warning");
 }
@@ -1394,7 +1429,7 @@ function addBulkStockRow() { const rowId = Date.now(); let opt = '<option value=
 function prepareBulkStock() { const type = document.getElementById('bulk-stock-type').value; const reason = document.getElementById('bulk-stock-reason').value; const rows = document.querySelectorAll('.bulk-row'); const items = []; let err=false; rows.forEach(r => { const sel = r.querySelector('select'); const qty = parseInt(r.querySelector('input').value)||0; if(!sel.value || qty<=0) err=true; const maxs = parseInt(sel.options[sel.selectedIndex].dataset.stock)||0; if(type==='Keluar'&&qty>maxs) err=true; items.push({id: sel.value, nama: sel.options[sel.selectedIndex].text, qty: qty, currentStock: maxs}); }); if(err || !reason) {alert("Cek input!"); return;} dom.bulkStockModal.hide(); PENDING_ACTION = {type: 'bulkStock', payload: {type, reason, items}}; openPinModal(); }
 async function doBulkStock(cashierName, passedPin) { dom.loading.style.display='flex'; const res = await fetchApi('saveBulkStock', PENDING_ACTION.payload, passedPin); dom.loading.style.display='none'; if(res.success){ IS_STOK_STALE=true; GLOBAL_PRODUCTS=res.products; renderMasterStok(); alert('Sukses');} else alert(res.message); }
 
-function showPrinterGuide() { showToast('1. Pair printer bluetooth\n2. Klik Cetak di struk', 'info'); }
+// A.7: showPrinterGuide() dihapus — fitur tidak dibutuhkan
 
 async function refreshOwnerData() {
   dom.loading.style.display = 'flex';

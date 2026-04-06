@@ -352,26 +352,7 @@ function toggleProductView() {
   }
 }
 
-// Obat Obfuscation Function: Mute the medicine names for patients.
-function censorItemName(name, kategori, id) {
-  let isBarang = false;
-  if (kategori) {
-    isBarang = String(kategori).toLowerCase() === 'barang';
-  } else {
-    // Fallback if kategori is not stored (eg. old history)
-    const gp = GLOBAL_PRODUCTS.find(p => p.ID === id);
-    if (gp) isBarang = String(gp.Kategori).toLowerCase() === 'barang';
-    else isBarang = true; // safe fallback for unknown items
-  }
-  if (!isBarang) return name; // Tindakan/Konseling tidak disensor
-
-  return String(name).split(' ').map(w => {
-     if (w.length <= 3) return w;
-     if (!isNaN(w)) return w; // Biarkan angka (dosis 500mg bisa kena kalau mg pisah, tapi kalau gabung tidak kena)
-     // Sensor huruf tengah kata
-     return w.charAt(0) + '*'.repeat(w.length - 2) + w.charAt(w.length - 1);
-  }).join(' ');
-}
+// Sensor nama obat sudah tidak diperlukan — user menggunakan kolom Inisial sebagai pengganti
 
 function addToCart(id) {
   const p = GLOBAL_PRODUCTS.find(x => String(x.ID) === String(id)); if (!p) return;
@@ -552,9 +533,8 @@ function populateReceiptPreview() {
   listHtml.innerHTML = '';
   d.data.items.forEach(i => {
     const isDiscounted = i.disc_bpjs > 0;
-    // A.10: Gunakan inisial jika ada, fallback ke nama asli
+    // Gunakan inisial jika ada, fallback ke nama asli
     const displayName = i.inisial || i.nama;
-    const censoredName = censorItemName(displayName, i.kategori, i.id);
     const subtotalHtml = isDiscounted
       ? `<div class="d-flex flex-column text-end"><del class="text-muted small">${formatRp(i.harga * i.qty)}</del><span class="fw-bold">${formatRp(i.subtotal)}</span></div>`
       : `<div class="fw-bold">${formatRp(i.subtotal)}</div>`;
@@ -562,7 +542,7 @@ function populateReceiptPreview() {
     listHtml.innerHTML += `
        <div class="d-flex justify-content-between align-items-start mb-2">
          <div class="d-flex flex-column w-75">
-           <span class="fw-bold text-dark">${censoredName}</span>
+           <span class="fw-bold text-dark">${displayName}</span>
            <span class="text-muted small">${i.qty} x ${formatRp(i.harga)} ${isDiscounted ? '<span class="text-success ms-1">(BPJS)</span>' : ''}</span>
          </div>
          ${subtotalHtml}
@@ -765,8 +745,8 @@ async function printBluetooth() {
     // ITEM
     d.data.items.forEach(i => {
       // Baris 1: Nama Item
-      // A.10: Gunakan inisial jika ada
-      let nama = censorItemName(i.inisial || i.nama, i.kategori, i.id);
+      // Gunakan inisial jika ada, fallback ke nama asli
+      let nama = i.inisial || i.nama;
       if (nama.length > 32) nama = nama.substring(0, 32); 
       esc.text(nama + "\n");
       
@@ -994,21 +974,39 @@ function renderMasterStok() {
 
 async function loadStockLogs() {
   const tb = document.getElementById('table-stock-logs');
-  tb.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Memuat data...</td></tr>';
   const filter = document.getElementById('stock-filter') ? document.getElementById('stock-filter').value : 'hari_ini';
+  const cacheKey = 'pos_stock_cache_' + filter;
 
-  const res = await fetchApi('getStockLogs', filter);
-  if (!res.success) {
-    tb.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">Error: ${res.message}</td></tr>`;
-    return;
+  // Cache-first: render dari cache jika ada
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try { renderStockLogs(JSON.parse(cached)); } catch(e) {}
+  } else {
+    tb.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Memuat data...</td></tr>';
   }
+
+  // Background fetch
+  try {
+    const res = await fetchApi('getStockLogs', filter);
+    if (!res.success) {
+      if (!cached) tb.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">Error: ${res.message}</td></tr>`;
+      return;
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(res.data));
+    renderStockLogs(res.data);
+    IS_STOK_STALE = false;
+  } catch(err) { console.error(err); }
+}
+
+function renderStockLogs(logs) {
+  const tb = document.getElementById('table-stock-logs');
   tb.innerHTML = '';
-  if (res.data.length === 0) {
+  if (logs.length === 0) {
     tb.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Tidak ada riwayat pergerakan stok.</td></tr>';
     return;
   }
 
-  res.data.forEach((l, i) => {
+  logs.forEach((l, i) => {
     const isKeluar = l['Jenis (Penjualan/Masuk/Keluar)'] === 'Penjualan' || l['Jenis (Penjualan/Masuk/Keluar)'] === 'Keluar';
     const detailId = 'stockLogDetail' + i;
     let detailHtml = '<div class="text-muted small">No Detail</div>';
@@ -1046,7 +1044,6 @@ async function loadStockLogs() {
         </td>
       </tr>`;
   });
-  IS_STOK_STALE = false;
 }
 
 // Tambah modal functions
@@ -1120,37 +1117,43 @@ async function saveProductForm() {
 
   if (!payload.nama) { alert("Nama produk tidak boleh kosong!"); return; }
 
-  dom.loading.style.display = 'flex'; dom.loading.style.opacity = '1';
+  // OPTIMISTIC UI: Close modal & show toast immediately
+  dom.productModal.hide();
+  showToast("Menyimpan produk...", "info");
 
-  const res = await fetchApi('saveProductData', payload);
-  if (res.success) {
-    GLOBAL_PRODUCTS = res.products; renderMasterStok(); renderProducts('all', '');
-    
-    if (!isNew && payload.kategori === 'Barang' && addStockVal !== 0) {
-      const stockPayload = [{ id: payload.id, qty_added: addStockVal, reason: document.getElementById('prod-form-stock-reason').value || "Manual Update" }];
-      const sRes = await fetchApi('updateStock', stockPayload, sessionPin);
+  // Background sync
+  try {
+    const res = await fetchApi('saveProductData', payload);
+    if (res.success) {
+      GLOBAL_PRODUCTS = res.products; renderMasterStok(); renderProducts('all', '');
       
-      if (sRes.success) { 
-        GLOBAL_PRODUCTS = sRes.products; renderMasterStok(); renderProducts('all', ''); 
-        dom.productModal.hide(); alert("Produk & Stok tersimpan."); 
-      } else alert(sRes.message);
+      if (!isNew && payload.kategori === 'Barang' && addStockVal !== 0) {
+        const stockPayload = [{ id: payload.id, qty_added: addStockVal, reason: document.getElementById('prod-form-stock-reason').value || "Manual Update" }];
+        const sRes = await fetchApi('updateStock', stockPayload, sessionPin);
+        if (sRes.success) { 
+          GLOBAL_PRODUCTS = sRes.products; renderMasterStok(); renderProducts('all', ''); 
+          showToast("Produk & Stok tersimpan."); 
+        } else showToast(sRes.message, 'error');
+      } else {
+        showToast(res.message);
+      }
     } else {
-      dom.productModal.hide(); alert(res.message);
+      showToast(res.message, 'error');
     }
-  } else {
-    alert(res.message);
-  }
-  dom.loading.style.opacity = '0'; setTimeout(() => dom.loading.style.display = 'none', 300);
+  } catch(e) { showToast('Gagal sinkron: ' + e.message, 'error'); }
 }
 
 async function deleteProductRequest(id) {
   if (confirm("Yakin hapus produk ini permanen?")) {
-    dom.loading.style.display = 'flex'; dom.loading.style.opacity = '1';
-    const res = await fetchApi('deleteProduct', id);
-    dom.loading.style.opacity = '0'; setTimeout(() => dom.loading.style.display = 'none', 300);
+    // OPTIMISTIC UI: Close modal immediately
+    dom.productModal.hide();
+    showToast("Menghapus produk...", "info");
     
-    if (res.success) { GLOBAL_PRODUCTS = res.products; renderMasterStok(); renderProducts('all', ''); dom.productModal.hide(); }
-    else alert(res.message);
+    const res = await fetchApi('deleteProduct', id);
+    if (res.success) { 
+      GLOBAL_PRODUCTS = res.products; renderMasterStok(); renderProducts('all', ''); 
+      showToast("Produk berhasil dihapus.");
+    } else showToast(res.message, 'error');
   }
 }
 
@@ -1163,24 +1166,31 @@ async function loadReportData() {
   const tMasuk = document.getElementById('report-kas-masuk');
   const tKeluar = document.getElementById('report-kas-keluar');
   const tNet = document.getElementById('report-net-kas');
-  const tAcc = document.getElementById('report-account-balances');
+  const cacheKey = 'pos_report_cache_' + filter;
 
   tMasuk.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
   tKeluar.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
   tNet.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-  tAcc.innerHTML = '<tr><td colspan="2" class="text-center py-4">Memuat data...</td></tr>';
 
-  const res = await fetchApi('getReportData', filter);
-  
-  if (!res.success) {
-    showToast(res.message, 'error');
-    tAcc.innerHTML = `<tr><td colspan="2" class="text-center text-danger py-4">${res.message}</td></tr>`;
-    return;
+  // Cache-first
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try { renderReportUI(JSON.parse(cached)); } catch(e) {}
   }
 
-  const data = res.data;
-  tMasuk.innerText = formatRp(data.totalMasuk);
-  tKeluar.innerText = formatRp(data.totalKeluar);
+  const res = await fetchApi('getReportData', filter);
+  if (!res.success) {
+    if (!cached) showToast(res.message, 'error');
+    return;
+  }
+  localStorage.setItem(cacheKey, JSON.stringify(res.data));
+  renderReportUI(res.data);
+}
+
+function renderReportUI(data) {
+  document.getElementById('report-kas-masuk').innerText = formatRp(data.totalMasuk);
+  document.getElementById('report-kas-keluar').innerText = formatRp(data.totalKeluar);
+  const tNet = document.getElementById('report-net-kas');
   tNet.innerText = formatRp(data.netKas);
   tNet.className = 'fw-bold m-0 ' + (data.netKas > 0 ? 'text-success' : (data.netKas < 0 ? 'text-danger' : 'text-dark'));
 
@@ -1190,21 +1200,7 @@ async function loadReportData() {
   document.getElementById('report-rincian-net').innerText = formatRp(data.netKas);
   document.getElementById('report-rincian-net').className = 'text-end pe-4 fw-bold fs-6 ' + (data.netKas > 0 ? 'text-success' : data.netKas < 0 ? 'text-danger' : 'text-dark');
 
-  tAcc.innerHTML = '';
-  if (data.accounts.length === 0) {
-    tAcc.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-muted">Belum ada akun</td></tr>';
-  } else {
-    data.accounts.forEach(acc => {
-      tAcc.innerHTML += `
-         <tr>
-           <td class="ps-4 fw-bold text-dark">${acc.name}</td>
-           <td class="text-end pe-4 font-monospace fs-6 ${acc.saldo < 0 ? 'text-danger' : 'text-success'}">${formatRp(acc.saldo)}</td>
-         </tr>
-       `;
-    });
-  }
-
-  // --- RENDER CHARTS ---
+  // Render charts
   renderCharts({ dailyBreakdown: data.dailyBreakdown, categoryBreakdown: data.categoryBreakdown });
 }
 
@@ -1285,7 +1281,34 @@ function renderOwnerView() {
   });
   if (GLOBAL_ACCOUNTS.length === 0) tbAccounts.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Belum ada akun.</td></tr>`;
   
+  // Render ringkasan saldo akun (dipindah dari Laporan)
+  renderOwnerSaldo();
   loadOwnerUsers();
+}
+
+async function renderOwnerSaldo() {
+  const tb = document.getElementById('owner-account-balances');
+  tb.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-muted">Memuat saldo...</td></tr>';
+  
+  const res = await fetchApi('getReportData', 'semua');
+  if (!res.success) {
+    tb.innerHTML = `<tr><td colspan="2" class="text-center text-danger py-4">${res.message}</td></tr>`;
+    return;
+  }
+  
+  tb.innerHTML = '';
+  const accounts = res.data.accounts || [];
+  if (accounts.length === 0) {
+    tb.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-muted">Belum ada akun</td></tr>';
+  } else {
+    accounts.forEach(acc => {
+      tb.innerHTML += `
+        <tr>
+          <td class="ps-4 fw-bold text-dark">${acc.name}</td>
+          <td class="text-end pe-4 font-monospace fs-6 ${acc.saldo < 0 ? 'text-danger' : 'text-success'}">${formatRp(acc.saldo)}</td>
+        </tr>`;
+    });
+  }
 }
 
 async function loadOwnerUsers() {
@@ -1319,19 +1342,21 @@ async function saveProfileSetup() {
     Telepon: document.getElementById('setup-telepon').value,
     Pesan_Nota: document.getElementById('setup-pesan-nota').value
   };
-  dom.loading.style.display = 'flex';
+
+  // OPTIMISTIC UI: Update lokal instan
+  Object.assign(GLOBAL_PROFILE, payload);
+  dom.appTitle.innerText = GLOBAL_PROFILE.Nama_Bisnis || 'Polindes POS';
+  document.getElementById('print-biz-name').innerText = GLOBAL_PROFILE.Nama_Bisnis || '';
+  document.getElementById('print-biz-address').innerText = GLOBAL_PROFILE.Alamat || '';
+  document.getElementById('print-biz-phone').innerText = GLOBAL_PROFILE.Telepon || '';
+  document.getElementById('print-biz-footer').innerText = GLOBAL_PROFILE.Pesan_Nota || 'Terima kasih atas kunjungan Anda!';
+  showToast("Menyimpan profil...", "info");
+
+  // Background sync
   const res = await fetchApi('saveProfileData', payload, sessionPin);
-  dom.loading.style.display = 'none';
-  
   if (res.success) {
     GLOBAL_PROFILE = res.profile;
     showToast("Profil berhasil disimpan!");
-    // A.9: Update semua elemen yang menggunakan data profil
-    dom.appTitle.innerText = GLOBAL_PROFILE.Nama_Bisnis || 'Polindes POS';
-    document.getElementById('print-biz-name').innerText = GLOBAL_PROFILE.Nama_Bisnis || '';
-    document.getElementById('print-biz-address').innerText = GLOBAL_PROFILE.Alamat || '';
-    document.getElementById('print-biz-phone').innerText = GLOBAL_PROFILE.Telepon || '';
-    document.getElementById('print-biz-footer').innerText = GLOBAL_PROFILE.Pesan_Nota || 'Terima kasih atas kunjungan Anda!';
   } else showToast(res.message, 'error');
 }
 
@@ -1372,22 +1397,23 @@ async function saveUser() {
   };
   if (!payload.Nama) { showToast("Nama wajib diisi!", "warning"); return; }
 
-  dom.loading.style.display = 'flex';
+  // OPTIMISTIC UI: Close modal immediately
+  dom.userModal.hide();
+  showToast("Menyimpan user...", "info");
+
   const res = await fetchApi('saveUserData', payload, sessionPin);
-  dom.loading.style.display = 'none';
-  
   if (res.success) {
-    showToast(res.message); dom.userModal.hide(); loadOwnerUsers();
+    showToast(res.message); loadOwnerUsers();
   } else showToast(res.message, 'error');
 }
 
 async function deleteUser() {
   if (!confirm("Yakin hapus user ini?")) return;
   const name = document.getElementById('user-old-name').value;
-  dom.loading.style.display = 'flex';
+  dom.userModal.hide();
+  showToast("Menghapus user...", "info");
   const res = await fetchApi('deleteUser', name, sessionPin);
-  dom.loading.style.display = 'none';
-  if (res.success) { showToast(res.message); dom.userModal.hide(); loadOwnerUsers(); } 
+  if (res.success) { showToast(res.message); loadOwnerUsers(); } 
   else showToast(res.message, 'error');
 }
 
@@ -1402,32 +1428,35 @@ async function saveAccount() {
     NewSaldoStr: document.getElementById('account-saldo').value
   };
   if (!payload.ID || !payload.Nama_Akun) { showToast("ID & Nama Akun wajib diisi!", "warning"); return; }
-  dom.loading.style.display = 'flex';
+
+  // OPTIMISTIC UI: Close modal immediately
+  dom.accountModal.hide();
+  showToast("Menyimpan akun...", "info");
+
   const res = await fetchApi('saveAccountData', payload, sessionPin);
-  dom.loading.style.display = 'none';
-  if (res.success) { showToast(res.message); dom.accountModal.hide(); GLOBAL_ACCOUNTS = res.accounts; renderOwnerView(); refreshPaymentDropdown(); } 
+  if (res.success) { showToast(res.message); GLOBAL_ACCOUNTS = res.accounts; renderOwnerView(); refreshPaymentDropdown(); } 
   else showToast(res.message, 'error');
 }
 
 async function deleteAccount() {
   if (!confirm("Yakin hapus akun ini?")) return;
   const id = document.getElementById('account-old-id').value;
-  dom.loading.style.display = 'flex';
+  dom.accountModal.hide();
+  showToast("Menghapus akun...", "info");
   const res = await fetchApi('deleteAccount', id, sessionPin);
-  dom.loading.style.display = 'none';
-  if (res.success) { showToast(res.message); dom.accountModal.hide(); GLOBAL_ACCOUNTS = res.accounts; renderOwnerView(); refreshPaymentDropdown(); } 
+  if (res.success) { showToast(res.message); GLOBAL_ACCOUNTS = res.accounts; renderOwnerView(); refreshPaymentDropdown(); } 
   else showToast(res.message, 'error');
 }
 
 // Bulk & Cash Modals setup omitted for brevity but they wrap variables to PENDING_ACTION like before
 function openCashEntryModal() { document.getElementById('cash-form-type').value = 'Masuk Non-Jual'; document.getElementById('cash-form-amount').value = ''; document.getElementById('cash-form-desc').value = ''; const accSelect = document.getElementById('cash-form-account'); accSelect.innerHTML = ''; GLOBAL_ACCOUNTS.forEach(a => { accSelect.innerHTML += `<option value="${a.Nama_Akun}">${a.Nama_Akun}</option>`; }); dom.cashEntryModal.show(); }
 function prepareCashEntry() { const type = document.getElementById('cash-form-type').value; const amount = parseFloat(document.getElementById('cash-form-amount').value) || 0; const account = document.getElementById('cash-form-account').value; const desc = document.getElementById('cash-form-desc').value; if(amount<=0 || !desc) {alert('Error input'); return;} dom.cashEntryModal.hide(); PENDING_ACTION = {type: 'cashEntry', payload: {type, amount, account, desc}}; openPinModal(); }
-async function doCashEntry(cashierName, passedPin) { dom.loading.style.display='flex'; const res = await fetchApi('saveCashEntry', PENDING_ACTION.payload, passedPin); dom.loading.style.display='none'; if(res.success){ IS_RIWAYAT_STALE=true; alert('Sukses dsimpan'); loadHistoryData();} else alert(res.message); }
+async function doCashEntry(cashierName, passedPin) { showToast('Menyimpan kas...', 'info'); IS_RIWAYAT_STALE=true; const res = await fetchApi('saveCashEntry', PENDING_ACTION.payload, passedPin); if(res.success){ showToast('Kas berhasil disimpan!'); loadHistoryData();} else showToast(res.message, 'error'); }
 
 function openBulkStockModal() { document.getElementById('bulk-stock-reason').value = ''; document.getElementById('bulk-stock-rows').innerHTML = ''; addBulkStockRow(); dom.bulkStockModal ? dom.bulkStockModal.show() : (dom.bulkStockModal = new bootstrap.Modal(document.getElementById('bulkStockModal'))).show(); }
 function addBulkStockRow() { const rowId = Date.now(); let opt = '<option value="">-- Pilih Barang --</option>'; GLOBAL_PRODUCTS.filter(p=>p.Kategori==='Barang').forEach(p=> {opt += `<option value="${p.ID}" data-stock="${p.Stok}">${p.Nama}</option>`}); document.getElementById('bulk-stock-rows').insertAdjacentHTML('beforeend', `<div class="row g-2 mb-2 bulk-row" id="row-${rowId}"><div class="col-7"><select class="form-select bulk-item-select">${opt}</select></div><div class="col-3"><input type="number" class="form-control bulk-item-qty" placeholder="Qty"></div><div class="col-2"><button class="btn btn-outline-danger btn-sm w-100" onclick="document.getElementById('row-${rowId}').remove()"><i class="fa-solid fa-trash"></i></button></div></div>`); }
 function prepareBulkStock() { const type = document.getElementById('bulk-stock-type').value; const reason = document.getElementById('bulk-stock-reason').value; const rows = document.querySelectorAll('.bulk-row'); const items = []; let err=false; rows.forEach(r => { const sel = r.querySelector('select'); const qty = parseInt(r.querySelector('input').value)||0; if(!sel.value || qty<=0) err=true; const maxs = parseInt(sel.options[sel.selectedIndex].dataset.stock)||0; if(type==='Keluar'&&qty>maxs) err=true; items.push({id: sel.value, nama: sel.options[sel.selectedIndex].text, qty: qty, currentStock: maxs}); }); if(err || !reason) {alert("Cek input!"); return;} dom.bulkStockModal.hide(); PENDING_ACTION = {type: 'bulkStock', payload: {type, reason, items}}; openPinModal(); }
-async function doBulkStock(cashierName, passedPin) { dom.loading.style.display='flex'; const res = await fetchApi('saveBulkStock', PENDING_ACTION.payload, passedPin); dom.loading.style.display='none'; if(res.success){ IS_STOK_STALE=true; GLOBAL_PRODUCTS=res.products; renderMasterStok(); alert('Sukses');} else alert(res.message); }
+async function doBulkStock(cashierName, passedPin) { showToast('Menyimpan stok...', 'info'); IS_STOK_STALE=true; const res = await fetchApi('saveBulkStock', PENDING_ACTION.payload, passedPin); if(res.success){ GLOBAL_PRODUCTS=res.products; renderMasterStok(); showToast('Stok berhasil diperbarui!');} else showToast(res.message, 'error'); }
 
 // A.7: showPrinterGuide() dihapus — fitur tidak dibutuhkan
 
@@ -1447,5 +1476,14 @@ async function refreshOwnerData() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(reg => {
     console.log('App is PWA ready', reg.scope);
+    // Deteksi update baru
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          showToast('Versi baru tersedia! Refresh halaman untuk update.', 'info');
+        }
+      });
+    });
   }).catch(err => console.log('SW ref failed', err));
 }

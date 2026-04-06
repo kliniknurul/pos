@@ -40,7 +40,7 @@
           <i class="fa-solid fa-plus fs-5"></i>
         </div>
         <h4 class="m-0 fw-bold text-dark" id="app-title">Polindes POS</h4>
-        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.2.1</span>
+        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.3.0</span>
       </div>
       <div id="sync-status" class="text-success small fw-bold">
         <i class="fa-solid fa-cloud-check me-1"></i> Online
@@ -377,83 +377,47 @@
             </div>
           </div>
 
-          <!-- Nav Tabs -->
-          <ul class="nav nav-tabs mb-3" role="tablist">
-            <li class="nav-item" role="presentation">
-              <button class="nav-link active fw-bold" id="ringkasan-tab" data-bs-toggle="tab"
-                data-bs-target="#tab-ringkasan" type="button" role="tab">Ringkasan Saldo Akun</button>
-            </li>
-            <li class="nav-item" role="presentation">
-              <button class="nav-link fw-bold" id="rincian-tab" data-bs-toggle="tab" data-bs-target="#tab-rincian"
-                type="button" role="tab">Rincian Aliran Dana</button>
-            </li>
-          </ul>
-
-          <div class="tab-content flex-grow-1 overflow-auto">
-            <!-- TAB 1: RINGKASAN (SALDO AKUN) -->
-            <div class="tab-pane fade show active h-100" id="tab-ringkasan" role="tabpanel">
-              <div class="card shadow-sm border-0 h-100 d-flex flex-column">
-                <div class="card-body p-0 d-flex flex-column overflow-auto">
-                  <div class="table-responsive h-100">
-                    <table class="table table-hover mb-0">
-                      <thead class="bg-light">
-                        <tr>
-                          <th class="ps-4">Nama Akun</th>
-                          <th class="text-end pe-4">Saldo Aktual (Semua Waktu)</th>
-                        </tr>
-                      </thead>
-                      <tbody id="report-account-balances">
-                        <tr>
-                          <td colspan="2" class="text-center py-4 text-muted">Memuat data akun...</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
+          <!-- Rincian Aliran Dana (langsung tanpa tab) -->
+          <div class="card shadow-sm border-0 flex-grow-1 d-flex flex-column">
+            <div class="card-header bg-white border-0 pt-3 pb-0 px-4">
+              <h6 class="fw-bold m-0"><i class="fa-solid fa-file-invoice text-secondary me-2"></i>Rincian Aliran Dana</h6>
             </div>
-
-            <!-- TAB 2: RINCIAN ALIRAN DANA -->
-            <div class="tab-pane fade h-100" id="tab-rincian" role="tabpanel">
-              <div class="card shadow-sm border-0 h-100 d-flex flex-column">
-                <div class="card-body p-0 d-flex flex-column overflow-auto">
-                  <div class="table-responsive h-100">
-                    <table class="table mb-0">
-                      <thead class="bg-light">
-                        <tr>
-                          <th class="ps-4">Kategori Detail</th>
-                          <th class="text-end pe-4">Nominal (Rp)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr class="table-light">
-                          <td colspan="2" class="ps-4 fw-bold text-success"><i
-                              class="fa-solid fa-arrow-down me-2"></i>KAS MASUK</td>
-                        </tr>
-                        <tr>
-                          <td class="ps-5">Pendapatan Penjualan</td>
-                          <td class="text-end pe-4 fw-bold text-success" id="report-rincian-jual">Rp 0</td>
-                        </tr>
-                        <tr>
-                          <td class="ps-5">Pemasukan Lainnya (Non-Jual)</td>
-                          <td class="text-end pe-4 fw-bold text-success" id="report-rincian-lain">Rp 0</td>
-                        </tr>
-                        <tr class="table-light mt-2">
-                          <td colspan="2" class="ps-4 fw-bold text-danger"><i class="fa-solid fa-arrow-up me-2"></i>KAS
-                            KELUAR</td>
-                        </tr>
-                        <tr>
-                          <td class="ps-5">Total Pengeluaran</td>
-                          <td class="text-end pe-4 fw-bold text-danger" id="report-rincian-keluar">Rp 0</td>
-                        </tr>
-                        <tr class="table-light">
-                          <td class="ps-4 fw-bold fs-6"><i class="fa-solid fa-equals me-2"></i>NET KAS</td>
-                          <td class="text-end pe-4 fw-bold fs-6" id="report-rincian-net">Rp 0</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+            <div class="card-body p-0 d-flex flex-column overflow-auto">
+              <div class="table-responsive h-100">
+                <table class="table mb-0">
+                  <thead class="bg-light">
+                    <tr>
+                      <th class="ps-4">Kategori Detail</th>
+                      <th class="text-end pe-4">Nominal (Rp)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="table-light">
+                      <td colspan="2" class="ps-4 fw-bold text-success"><i
+                          class="fa-solid fa-arrow-down me-2"></i>KAS MASUK</td>
+                    </tr>
+                    <tr>
+                      <td class="ps-5">Pendapatan Penjualan</td>
+                      <td class="text-end pe-4 fw-bold text-success" id="report-rincian-jual">Rp 0</td>
+                    </tr>
+                    <tr>
+                      <td class="ps-5">Pemasukan Lainnya (Non-Jual)</td>
+                      <td class="text-end pe-4 fw-bold text-success" id="report-rincian-lain">Rp 0</td>
+                    </tr>
+                    <tr class="table-light mt-2">
+                      <td colspan="2" class="ps-4 fw-bold text-danger"><i class="fa-solid fa-arrow-up me-2"></i>KAS
+                        KELUAR</td>
+                    </tr>
+                    <tr>
+                      <td class="ps-5">Total Pengeluaran</td>
+                      <td class="text-end pe-4 fw-bold text-danger" id="report-rincian-keluar">Rp 0</td>
+                    </tr>
+                    <tr class="table-light">
+                      <td class="ps-4 fw-bold fs-6"><i class="fa-solid fa-equals me-2"></i>NET KAS</td>
+                      <td class="text-end pe-4 fw-bold fs-6" id="report-rincian-net">Rp 0</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -478,6 +442,8 @@
                 data-bs-target="#tab-owner-users">Manajemen User</button></li>
             <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="tab"
                 data-bs-target="#tab-owner-accounts">Manajemen Akun</button></li>
+            <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="tab"
+                data-bs-target="#tab-owner-saldo"><i class="fa-solid fa-wallet me-1"></i>Ringkasan Saldo</button></li>
           </ul>
 
           <div class="tab-content flex-grow-1 bg-white p-4 rounded shadow-sm">
@@ -552,6 +518,26 @@
                   </thead>
                   <tbody id="table-owner-accounts">
                     <!-- Dynamic -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- RINGKASAN SALDO (Dipindah dari Laporan ke Owner) -->
+            <div class="tab-pane fade" id="tab-owner-saldo">
+              <h5 class="fw-bold mb-3 border-bottom pb-2"><i class="fa-solid fa-wallet text-primary me-2"></i>Ringkasan Saldo Akun</h5>
+              <div class="table-responsive">
+                <table class="table table-hover table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="ps-4">Nama Akun</th>
+                      <th class="text-end pe-4">Saldo Aktual (Semua Waktu)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="owner-account-balances">
+                    <tr>
+                      <td colspan="2" class="text-center py-4 text-muted">Klik "Refresh" untuk memuat data saldo.</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

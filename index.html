@@ -40,7 +40,7 @@
           <i class="fa-solid fa-plus fs-5"></i>
         </div>
         <h4 class="m-0 fw-bold text-dark" id="app-title">Polindes POS</h4>
-        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.3.1</span>
+        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.3.2</span>
       </div>
       <div id="sync-status" class="text-success small fw-bold">
         <i class="fa-solid fa-cloud-check me-1"></i> Online
@@ -237,8 +237,9 @@
 
         <!-- 3. STOK VIEW -->
         <div id="view-stok" class="view-container w-100 p-4 bg-light flex-column overflow-auto">
-          <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="fw-bold m-0"><i class="fa-solid fa-box-open text-primary me-2"></i>Manajemen Stok & Data</h3>
+          <!-- Baris 1: Judul + Tombol Aksi -->
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="fw-bold m-0"><i class="fa-solid fa-box-open text-primary me-2"></i>Manajemen Stok &amp; Data</h3>
             <div class="d-flex align-items-center gap-2">
               <select class="form-select bg-white border-primary text-primary fw-bold" id="stock-filter"
                 onchange="loadStockLogs()" style="max-width: 150px;">
@@ -257,11 +258,31 @@
             </div>
           </div>
 
+          <!-- Baris 2: Search bar (hanya aktif di tab Sisa Stok & Master) -->
+          <div class="input-group mb-3" id="stok-search-wrapper">
+            <span class="input-group-text bg-white border-end-0">
+              <i class="fa-solid fa-search text-muted"></i>
+            </span>
+            <input type="text" class="form-control bg-white border-start-0 ps-0"
+              id="stok-search-input"
+              placeholder="Cari nama produk, inisial, atau ID..."
+              oninput="renderMasterStok(this.value)">
+            <button class="btn btn-outline-secondary" type="button" id="stok-search-clear"
+              onclick="document.getElementById('stok-search-input').value=''; renderMasterStok('');"
+              title="Hapus pencarian">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
           <ul class="nav nav-tabs mb-3" role="tablist">
             <li class="nav-item"><button class="nav-link active fw-bold" data-bs-toggle="tab"
-                data-bs-target="#tab-master-stok">Sisa Stok & Master</button></li>
+                data-bs-target="#tab-master-stok"
+                onclick="document.getElementById('stok-search-wrapper').style.display='flex'">
+                Sisa Stok &amp; Master</button></li>
             <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="tab"
-                data-bs-target="#tab-log-stok">Riwayat Pergerakan</button></li>
+                data-bs-target="#tab-log-stok"
+                onclick="document.getElementById('stok-search-wrapper').style.display='none'">
+                Riwayat Pergerakan</button></li>
           </ul>
 
           <div class="tab-content flex-grow-1">

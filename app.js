@@ -947,11 +947,29 @@ async function loadHistoryData() {
 }
 
 // --- MANAJEMEN STOK ---
-function renderMasterStok() {
+function renderMasterStok(query = '') {
   const tb = document.getElementById('table-master-stok'); tb.innerHTML = '';
-  // Urutkan berdasarkan nama A-Z sebelum ditampilkan
-  const sorted = [...GLOBAL_PRODUCTS].sort((a, b) => String(a.Nama).localeCompare(String(b.Nama), 'id'));
-  sorted.forEach(p => {
+
+  // Urutkan berdasarkan nama A-Z
+  let list = [...GLOBAL_PRODUCTS].sort((a, b) => String(a.Nama).localeCompare(String(b.Nama), 'id'));
+
+  // Filter berdasarkan pencarian jika ada query
+  if (query) {
+    const q = query.toLowerCase();
+    list = list.filter(p =>
+      String(p.Nama).toLowerCase().includes(q) ||
+      String(p.Inisial || '').toLowerCase().includes(q) ||
+      String(p.ID).toLowerCase().includes(q) ||
+      String(p.Kategori).toLowerCase().includes(q)
+    );
+  }
+
+  if (list.length === 0) {
+    tb.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted"><i class="fa-solid fa-box-open me-2 opacity-50"></i>Tidak ada produk yang cocok.</td></tr>`;
+    return;
+  }
+
+  list.forEach(p => {
     const isB = String(p.Kategori).toLowerCase() === 'barang';
     const pJstr = JSON.stringify(p).replace(/"/g, '&quot;');
     const satuanText = p.Satuan && p.Satuan !== '-' ? `/${p.Satuan}` : '';

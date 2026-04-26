@@ -202,19 +202,10 @@ function switchView(viewId) {
 let currentPin = ''; let sessionPin = ''; let PIN_CACHE = {};
 
 function openPinModal() {
-  // A.8: Owner access → SELALU minta PIN, tidak pakai cache
-  if (PENDING_ACTION && PENDING_ACTION.type === 'openView' && PENDING_ACTION.view === 'owner') {
-    clearPinUI(); dom.pinModal.show();
-    return;
-  }
-  // Aksi lain (checkout, cashEntry, dll) → boleh auto-login dari cache
-  const cachedPin = localStorage.getItem('auth_pin_cache');
-  if (cachedPin) {
-    currentPin = atob(cachedPin);
-    submitPin(true);
-    return;
-  }
-  clearPinUI(); dom.pinModal.show(); 
+  // SETIAP aksi (transaksi, checkout, edit stok, owner) → SELALU minta PIN langsung.
+  // Tidak ada auto-login dari cache — setiap interaksi penting wajib otorisasi ulang.
+  clearPinUI();
+  dom.pinModal.show();
 }
 
 function handlePinInput(n) {
@@ -229,43 +220,33 @@ function updatePinIndicators() {
 }
 function clearPinUI() { currentPin = ''; updatePinIndicators(); }
 
-async function submitPin(fromCache = false) {
+async function submitPin() {
   if (currentPin.length === 0) return;
-  // Jangan muncuL loading screen jika PIN sudah di-cache agar UI terasa instan
-  if (!fromCache) {
-    dom.loading.style.display = 'flex';
-    document.getElementById('pin-loading').classList.remove('d-none');
-  }
 
+  // Gunakan IN-MEMORY cache agar tidak re-hit server jika PIN sama dalam 1 sesi
   if (PIN_CACHE[currentPin]) {
-    if (!fromCache) { 
-      dom.loading.style.display = 'none';
-      document.getElementById('pin-loading').classList.add('d-none'); 
-      dom.pinModal.hide(); 
-    }
-    processPinSuccess(PIN_CACHE[currentPin]); return;
+    dom.loading.style.display = 'none';
+    document.getElementById('pin-loading').classList.add('d-none');
+    dom.pinModal.hide();
+    processPinSuccess(PIN_CACHE[currentPin]);
+    return;
   }
 
-  // Jika belum cache, munculkan loading
+  // PIN belum di-cache → verifikasi ke server
   dom.loading.style.display = 'flex';
+  document.getElementById('pin-loading').classList.remove('d-none');
   const res = await fetchApi('checkPIN', null, currentPin);
   dom.loading.style.display = 'none';
-  if (!fromCache) document.getElementById('pin-loading').classList.add('d-none');
-  
+  document.getElementById('pin-loading').classList.add('d-none');
+
   if (res.success) {
+    // Simpan di memori saja (bukan localStorage) agar session terbatas
     PIN_CACHE[currentPin] = { name: res.name, role: res.role };
     sessionPin = currentPin;
-    localStorage.setItem('auth_pin_cache', btoa(currentPin)); 
-    if (!fromCache) dom.pinModal.hide();
+    dom.pinModal.hide();
     processPinSuccess({ name: res.name, role: res.role });
   } else {
-    localStorage.removeItem('auth_pin_cache');
-    if (fromCache) {
-      // Jika auto-login gagal, buka modal agar input manual
-      clearPinUI(); dom.pinModal.show();
-    } else {
-      showPinError(res.message);
-    }
+    showPinError(res.message);
   }
 }
 
@@ -284,10 +265,11 @@ function showPinError(msg) {
 }
 
 function postPinAction(cashierName, pinToPass) {
-  dom.pinModal.hide();
+  if (!PENDING_ACTION) return;
   if (PENDING_ACTION.type === 'checkout') doCheckout(cashierName, pinToPass);
   else if (PENDING_ACTION.type === 'cashEntry') doCashEntry(cashierName, pinToPass);
   else if (PENDING_ACTION.type === 'bulkStock') doBulkStock(cashierName, pinToPass);
+  else if (PENDING_ACTION.type === 'editProduct') _doEditProduct(PENDING_ACTION.prodJsonStr);
   else if (PENDING_ACTION.type === 'openView') {
     dom.views.forEach(v => v.classList.remove('active-view'));
     document.getElementById('view-' + PENDING_ACTION.view).classList.add('active-view');
@@ -566,13 +548,25 @@ function printReceipt() {
 
   const source = document.getElementById('print-area');
   const clone = document.getElementById('print-clone');
-  if (!source || !clone) { window.print(); return; } 
+  if (!source || !clone) { window.print(); return; }
 
+  // Isi konten clone
   clone.innerHTML = source.innerHTML;
-  void clone.offsetHeight; // Force reflow
+
+  // Penting: Buka ukuran clone agar browser bisa render sebelum print
+  // (height:0 + overflow:hidden mencegah rendering snapshot)
+  clone.style.height = 'auto';
+  clone.style.overflow = 'visible';
+  clone.style.opacity = '0'; // tetap tak terlihat oleh user
+
+  // Force reflow agar DOM benar-benar ter-render
+  void clone.offsetHeight;
 
   function cleanup() {
     clone.innerHTML = '';
+    clone.style.height = '0';
+    clone.style.overflow = 'hidden';
+    clone.style.opacity = '0';
     window.removeEventListener('afterprint', cleanup);
   }
   window.addEventListener('afterprint', cleanup);
@@ -580,7 +574,7 @@ function printReceipt() {
   setTimeout(() => {
     window.print();
     setTimeout(cleanup, 3000);
-  }, 150);
+  }, 200);
 }
 
 /* ====================================================
@@ -955,7 +949,9 @@ async function loadHistoryData() {
 // --- MANAJEMEN STOK ---
 function renderMasterStok() {
   const tb = document.getElementById('table-master-stok'); tb.innerHTML = '';
-  GLOBAL_PRODUCTS.forEach(p => {
+  // Urutkan berdasarkan nama A-Z sebelum ditampilkan
+  const sorted = [...GLOBAL_PRODUCTS].sort((a, b) => String(a.Nama).localeCompare(String(b.Nama), 'id'));
+  sorted.forEach(p => {
     const isB = String(p.Kategori).toLowerCase() === 'barang';
     const pJstr = JSON.stringify(p).replace(/"/g, '&quot;');
     const satuanText = p.Satuan && p.Satuan !== '-' ? `/${p.Satuan}` : '';
@@ -1069,10 +1065,16 @@ function openAddProductModal() {
 }
 
 function editProduct(prodJsonStr) {
+  // Edit stok/produk membutuhkan otorisasi PIN terlebih dahulu
+  PENDING_ACTION = { type: 'editProduct', prodJsonStr: prodJsonStr };
+  openPinModal();
+}
+
+function _doEditProduct(prodJsonStr) {
   const p = JSON.parse(prodJsonStr);
   document.getElementById('productModalTitle').innerText = "Edit Produk / Add Stok";
   document.getElementById('btn-prod-delete').classList.remove('d-none');
-  document.getElementById('btn-prod-delete').onclick = () => { deleteProductRequest(p.ID); };
+  document.getElementById('btn-prod-delete').onclick = () => { prepareDeleteProduct(p.ID); };
 
   document.getElementById('prod-form-id').value = p.ID;
   document.getElementById('prod-form-name').value = p.Nama;
@@ -1123,15 +1125,19 @@ async function saveProductForm() {
 
   // Background sync
   try {
-    const res = await fetchApi('saveProductData', payload);
+    const res = await fetchApi('saveProductData', payload, sessionPin);
     if (res.success) {
-      GLOBAL_PRODUCTS = res.products; renderMasterStok(); renderProducts('all', '');
+      GLOBAL_PRODUCTS = res.products;
+      renderMasterStok();
+      renderProducts(document.querySelector('.btn-filter.active')?.dataset.filter || 'all', document.getElementById('search-input')?.value || '');
       
       if (!isNew && payload.kategori === 'Barang' && addStockVal !== 0) {
         const stockPayload = [{ id: payload.id, qty_added: addStockVal, reason: document.getElementById('prod-form-stock-reason').value || "Manual Update" }];
         const sRes = await fetchApi('updateStock', stockPayload, sessionPin);
         if (sRes.success) { 
-          GLOBAL_PRODUCTS = sRes.products; renderMasterStok(); renderProducts('all', ''); 
+          GLOBAL_PRODUCTS = sRes.products;
+          renderMasterStok();
+          renderProducts(document.querySelector('.btn-filter.active')?.dataset.filter || 'all', document.getElementById('search-input')?.value || '');
           showToast("Produk & Stok tersimpan."); 
         } else showToast(sRes.message, 'error');
       } else {
@@ -1143,18 +1149,22 @@ async function saveProductForm() {
   } catch(e) { showToast('Gagal sinkron: ' + e.message, 'error'); }
 }
 
-async function deleteProductRequest(id) {
-  if (confirm("Yakin hapus produk ini permanen?")) {
-    // OPTIMISTIC UI: Close modal immediately
-    dom.productModal.hide();
-    showToast("Menghapus produk...", "info");
-    
-    const res = await fetchApi('deleteProduct', id);
-    if (res.success) { 
-      GLOBAL_PRODUCTS = res.products; renderMasterStok(); renderProducts('all', ''); 
-      showToast("Produk berhasil dihapus.");
-    } else showToast(res.message, 'error');
-  }
+function prepareDeleteProduct(id) {
+  // Tombol Hapus di dalam modal produk → butuh konfirmasi, lalu tutup modal
+  if (!confirm("Yakin hapus produk ini permanen?")) return;
+  dom.productModal.hide();
+  _doDeleteProduct(id);
+}
+
+async function _doDeleteProduct(id) {
+  showToast("Menghapus produk...", "info");
+  const res = await fetchApi('deleteProduct', id, sessionPin);
+  if (res.success) { 
+    GLOBAL_PRODUCTS = res.products;
+    renderMasterStok();
+    renderProducts(document.querySelector('.btn-filter.active')?.dataset.filter || 'all', document.getElementById('search-input')?.value || '');
+    showToast("Produk berhasil dihapus.");
+  } else showToast(res.message, 'error');
 }
 
 // LAPORAN KEUANGAN 
@@ -1362,7 +1372,8 @@ async function saveProfileSetup() {
 
 function lockOwnerArea() {
   sessionPin = '';
-  localStorage.removeItem('auth_pin_cache'); // A.8: Hapus cache PIN saat kunci owner
+  PIN_CACHE = {}; // Hapus juga in-memory cache PIN saat kunci area owner
+  localStorage.removeItem('auth_pin_cache'); // Bersihkan juga cache lama jika ada
   switchView('kasir');
   showToast("Akses Owner telah dikunci.", "warning");
 }

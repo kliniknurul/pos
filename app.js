@@ -157,9 +157,141 @@ async function initApp() {
   refreshPaymentDropdown();
   renderProducts('all', '');
   renderMasterStok();
+  updateGlobalCashBalance();
 
   dom.loading.style.opacity = '0';
   setTimeout(() => dom.loading.style.display = 'none', 300);
+}
+
+// --- UTILITY & NEW FEATURES ---
+function getFilterValue(type) {
+  const sel = document.getElementById(type + '-filter');
+  if (!sel) return 'hari_ini';
+  if (sel.value === 'custom') {
+    const from = document.getElementById(type + '-date-from').value;
+    const to = document.getElementById(type + '-date-to').value;
+    if (from && to) return `custom_${from}_${to}`;
+    return 'hari_ini'; // fallback
+  }
+  return sel.value;
+}
+
+function handleFilterChange(type) {
+  const sel = document.getElementById(type + '-filter');
+  const dFrom = document.getElementById(type + '-date-from');
+  const dTo = document.getElementById(type + '-date-to');
+  if (!sel || !dFrom || !dTo) return;
+  if (sel.value !== 'custom') {
+    const now = new Date();
+    let start, end;
+    if (sel.value === 'hari_ini') {
+      start = end = now;
+    } else if (sel.value === 'kemarin') {
+      start = end = new Date(now); start.setDate(start.getDate() - 1);
+    } else if (sel.value === 'minggu_ini') {
+      start = new Date(now);
+      const day = start.getDay();
+      start.setDate(start.getDate() - day + (day === 0 ? -6 : 1));
+      end = now;
+    } else if (sel.value === 'bulan_ini') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else {
+      dFrom.value = ''; dTo.value = ''; return;
+    }
+    
+    const fmt = d => {
+       const pad = n => n<10?'0'+n:n;
+       return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+    };
+    dFrom.value = fmt(start);
+    dTo.value = fmt(end);
+    
+    dFrom.classList.remove('flash-fill'); dTo.classList.remove('flash-fill');
+    void dFrom.offsetWidth; 
+    dFrom.classList.add('flash-fill'); dTo.classList.add('flash-fill');
+  }
+}
+
+function updateGlobalCashBalance() {
+  const cashAcc = GLOBAL_ACCOUNTS.find(a => String(a.Nama_Akun).toLowerCase() === 'cash' || String(a.Nama_Akun).toLowerCase() === 'kas');
+  const balance = cashAcc ? formatRp(cashAcc.Saldo) : 'Rp 0';
+  const rCb = document.getElementById('riwayat-cash-balance');
+  if (rCb) rCb.innerText = balance;
+  const lCb = document.getElementById('laporan-cash-balance');
+  if (lCb) lCb.innerText = balance;
+}
+
+function exportToPDF(title) {
+  const style = document.createElement('style');
+  style.id = 'report-print-style';
+  style.innerHTML = `
+    @page { size: A4 portrait !important; margin: 10mm !important; }
+    html, body { width: auto !important; height: auto !important; background: #fff !important; }
+    body > * { display: block !important; }
+    #sidebar, .top-header, #print-clone { display: none !important; }
+    .view-container:not(.active-view) { display: none !important; }
+    .view-container.active-view { padding: 0 !important; overflow: visible !important; height: auto !important; background: white !important;}
+    .btn, select, input[type=date], .nav-tabs { display: none !important; }
+    span.text-muted:contains('s/d') { display: none !important; }
+    .card { border: 1px solid #ddd !important; box-shadow: none !important; break-inside: avoid; }
+  `;
+  document.head.appendChild(style);
+  setTimeout(() => {
+    window.print();
+    document.getElementById('report-print-style').remove();
+  }, 300);
+}
+
+function renderStockMovementReport() {
+  const tb = document.getElementById('table-lap-stok-movement');
+  if (!tb) return;
+  tb.innerHTML = '<tr><td colspan="6" class="text-center py-4">Memuat data pergerakan stok...</td></tr>';
+  
+  const filter = getFilterValue('laporan');
+  fetchApi('getStockLogs', filter).then(res => {
+    if (!res.success) {
+      tb.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Gagal memuat data</td></tr>';
+      return;
+    }
+    const agg = {};
+    res.data.forEach(log => {
+      try {
+        const detail = JSON.parse(log.Detail_Stok_JSON || '[]');
+        detail.forEach(d => {
+           if (!agg[d.id]) agg[d.id] = { nama: d.nama || d.id, masuk: 0, keluar_jual: 0, keluar_lain: 0 };
+           if (d.qty_masuk) agg[d.id].masuk += parseInt(d.qty_masuk);
+           if (d.qty_keluar) {
+             if (log['Jenis (Penjualan/Masuk/Keluar)'] === 'Penjualan') agg[d.id].keluar_jual += parseInt(d.qty_keluar);
+             else agg[d.id].keluar_lain += parseInt(d.qty_keluar);
+           }
+        });
+      } catch(e) {}
+    });
+    
+    GLOBAL_PRODUCTS.filter(p => p.Kategori === 'Barang').forEach(p => {
+       if (!agg[p.ID]) agg[p.ID] = { nama: p.Nama, masuk: 0, keluar_jual: 0, keluar_lain: 0 };
+       agg[p.ID].sisa = p.Stok;
+    });
+
+    tb.innerHTML = '';
+    const keys = Object.keys(agg).sort((a,b) => agg[a].nama.localeCompare(agg[b].nama));
+    let hasData = false;
+    keys.forEach(k => {
+      const v = agg[k];
+      if (v.masuk === 0 && v.keluar_jual === 0 && v.keluar_lain === 0) return;
+      hasData = true;
+      tb.innerHTML += \`<tr>
+        <td class="ps-4 fw-bold">\${v.nama}</td>
+        <td class="text-center">-</td>
+        <td class="text-center text-success">+\${v.masuk}</td>
+        <td class="text-center text-danger">-\${v.keluar_jual}</td>
+        <td class="text-center text-warning">-\${v.keluar_lain}</td>
+        <td class="text-center fw-bold">\${v.sisa}</td>
+      </tr>\`;
+    });
+    if(!hasData) tb.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Tidak ada pergerakan stok untuk filter ini.</td></tr>';
+  });
 }
 
 const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
@@ -913,7 +1045,7 @@ function renderHistoryData(data) {
 }
 
 async function loadHistoryData() {
-  const filter = document.getElementById('history-filter') ? document.getElementById('history-filter').value : 'hari_ini';
+  const filter = getFilterValue('history');
   
   // Optimistic UI Caching
   const cached = localStorage.getItem('pos_history_cache_' + filter);
@@ -988,7 +1120,7 @@ function renderMasterStok(query = '') {
 
 async function loadStockLogs() {
   const tb = document.getElementById('table-stock-logs');
-  const filter = document.getElementById('stock-filter') ? document.getElementById('stock-filter').value : 'hari_ini';
+  const filter = getFilterValue('stock');
   const cacheKey = 'pos_stock_cache_' + filter;
 
   // Cache-first: render dari cache jika ada
@@ -1190,7 +1322,7 @@ let flowChart = null;
 let catChart = null;
 
 async function loadReportData() {
-  const filter = document.getElementById('laporan-filter').value;
+  const filter = getFilterValue('laporan');
   const tMasuk = document.getElementById('report-kas-masuk');
   const tKeluar = document.getElementById('report-kas-keluar');
   const tNet = document.getElementById('report-net-kas');
@@ -1437,7 +1569,7 @@ async function saveAccount() {
   showToast("Menyimpan akun...", "info");
 
   const res = await fetchApi('saveAccountData', payload, sessionPin);
-  if (res.success) { showToast(res.message); GLOBAL_ACCOUNTS = res.accounts; renderOwnerView(); refreshPaymentDropdown(); } 
+  if (res.success) { showToast(res.message); GLOBAL_ACCOUNTS = res.accounts; updateGlobalCashBalance(); renderOwnerView(); refreshPaymentDropdown(); } 
   else showToast(res.message, 'error');
 }
 

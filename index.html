@@ -40,7 +40,7 @@
           <i class="fa-solid fa-plus fs-5"></i>
         </div>
         <h4 class="m-0 fw-bold text-dark" id="app-title">Polindes POS</h4>
-        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.3.3</span>
+        <span class="badge bg-light text-muted border ms-2" style="font-size: 0.6rem; vertical-align: middle;">v1.4.0</span>
       </div>
       <div id="sync-status" class="text-success small fw-bold">
         <i class="fa-solid fa-cloud-check me-1"></i> Online
@@ -59,8 +59,8 @@
           <button class="nav-item-btn active" onclick="switchView('kasir')" title="Kasir">
             <i class="fa-solid fa-cash-register nav-icon"></i><span class="nav-text">Kasir</span>
           </button>
-          <button class="nav-item-btn" onclick="switchView('riwayat')" title="Riwayat Penjualan">
-            <i class="fa-solid fa-clock-rotate-left nav-icon"></i><span class="nav-text">Riwayat Penjualan</span>
+          <button class="nav-item-btn" onclick="switchView('riwayat')" title="Riwayat Transaksi">
+            <i class="fa-solid fa-clock-rotate-left nav-icon"></i><span class="nav-text">Riwayat Transaksi</span>
           </button>
           <button class="nav-item-btn" onclick="switchView('stok')" title="Stok (Riwayat & Data)">
             <i class="fa-solid fa-box-open nav-icon"></i><span class="nav-text">Stok (Riwayat & Data)</span>
@@ -160,27 +160,39 @@
         <!-- 2. RIWAYAT VIEW -->
         <div id="view-riwayat" class="view-container w-100 p-4 bg-light flex-column overflow-auto">
           <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="fw-bold m-0"><i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Riwayat Penjualan
-            </h3>
+            <h3 class="fw-bold m-0"><i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Riwayat Transaksi</h3>
             <div class="d-flex gap-2">
-              <select class="form-select bg-white border-primary text-primary fw-bold" id="history-filter"
-                onchange="loadHistoryData()">
+              <select class="form-select bg-white border-primary text-primary fw-bold" id="history-filter" onchange="handleFilterChange('history')">
                 <option value="hari_ini" selected>Hari Ini</option>
                 <option value="kemarin">Kemarin</option>
                 <option value="minggu_ini">Minggu Ini</option>
                 <option value="bulan_ini">Bulan Ini</option>
                 <option value="semua">Semua Waktu</option>
+                <option value="custom">Custom</option>
               </select>
-              <button class="btn btn-outline-primary whitespace-nowrap" style="white-space: nowrap;"
-                onclick="loadHistoryData()"><i class="fa-solid fa-rotate-right me-2"></i>Refresh</button>
+              <input type="date" class="form-control border-primary" id="history-date-from" onchange="document.getElementById('history-filter').value='custom'">
+              <span class="align-self-center fw-bold text-muted">s/d</span>
+              <input type="date" class="form-control border-primary" id="history-date-to" onchange="document.getElementById('history-filter').value='custom'">
+              <button class="btn btn-primary whitespace-nowrap" style="white-space: nowrap;" onclick="loadHistoryData()"><i class="fa-solid fa-search"></i></button>
+              <button class="btn btn-danger whitespace-nowrap" style="white-space: nowrap;" onclick="exportToPDF('Riwayat Transaksi')"><i class="fa-solid fa-file-pdf"></i></button>
             </div>
+          </div>
+
+          <div class="card shadow-sm border-0 border-start border-4 border-success mb-3 p-3">
+             <div class="d-flex justify-content-between align-items-center">
+                <div>
+                   <p class="text-muted small fw-bold mb-1 text-uppercase">Sisa Saldo Kas (Cash)</p>
+                   <h4 class="fw-bold text-dark m-0" id="riwayat-cash-balance">Rp 0</h4>
+                </div>
+                <i class="fa-solid fa-wallet fa-2x text-success opacity-50"></i>
+             </div>
           </div>
 
           <ul class="nav nav-tabs mb-3" id="historyTab" role="tablist">
             <li class="nav-item" role="presentation"><button class="nav-link active fw-bold" data-bs-toggle="tab"
-                data-bs-target="#tab-trx">Transaksi</button></li>
+                data-bs-target="#tab-trx">Riwayat Penjualan</button></li>
             <li class="nav-item" role="presentation"><button class="nav-link fw-bold" data-bs-toggle="tab"
-                data-bs-target="#tab-arus">Arus Kas</button></li>
+                data-bs-target="#tab-arus">Riwayat Arus Kas</button></li>
           </ul>
 
           <div class="tab-content flex-grow-1">
@@ -242,19 +254,23 @@
             <h3 class="fw-bold m-0"><i class="fa-solid fa-box-open text-primary me-2"></i>Manajemen Stok &amp; Data</h3>
             <div class="d-flex align-items-center gap-2">
               <select class="form-select bg-white border-primary text-primary fw-bold" id="stock-filter"
-                onchange="loadStockLogs()" style="max-width: 150px;">
+                onchange="handleFilterChange('stock')" style="max-width: 150px;">
                 <option value="hari_ini" selected>Hari Ini</option>
                 <option value="kemarin">Kemarin</option>
                 <option value="minggu_ini">Minggu Ini</option>
                 <option value="bulan_ini">Bulan Ini</option>
                 <option value="semua">Semua Waktu</option>
+                <option value="custom">Custom</option>
               </select>
-              <button class="btn btn-warning fw-bold text-dark" onclick="openBulkStockModal()"><i
+              <input type="date" class="form-control border-primary" id="stock-date-from" onchange="document.getElementById('stock-filter').value='custom'" style="max-width: 130px;">
+              <span class="align-self-center fw-bold text-muted">s/d</span>
+              <input type="date" class="form-control border-primary" id="stock-date-to" onchange="document.getElementById('stock-filter').value='custom'" style="max-width: 130px;">
+              <button class="btn btn-outline-primary" onclick="loadStockLogs()"><i
+                  class="fa-solid fa-search"></i></button>
+              <button class="btn btn-warning fw-bold text-dark ms-2" onclick="openBulkStockModal()"><i
                   class="fa-solid fa-boxes-stacked me-1"></i> Bulk Stok</button>
               <button class="btn btn-primary" onclick="openAddProductModal()"><i class="fa-solid fa-plus me-1"></i>
                 Produk Baru</button>
-              <button class="btn btn-outline-primary" onclick="loadStockLogs()"><i
-                  class="fa-solid fa-rotate-right me-1"></i> Refresh</button>
             </div>
           </div>
 
@@ -331,20 +347,47 @@
         <!-- 4. LAPORAN VIEW -->
         <div id="view-laporan" class="view-container w-100 p-4 bg-light flex-column overflow-auto">
           <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="fw-bold m-0"><i class="fa-solid fa-chart-line text-success me-2"></i>Laporan Keuangan</h3>
+            <h3 class="fw-bold m-0"><i class="fa-solid fa-chart-line text-success me-2"></i>Laporan Keuangan & Stok</h3>
             <div class="d-flex align-items-center gap-2">
               <select class="form-select bg-white border-success text-success fw-bold" id="laporan-filter"
-                onchange="loadReportData()" style="max-width: 150px;">
+                onchange="handleFilterChange('laporan')" style="max-width: 150px;">
                 <option value="hari_ini" selected>Hari Ini</option>
                 <option value="kemarin">Kemarin</option>
                 <option value="minggu_ini">Minggu Ini</option>
                 <option value="bulan_ini">Bulan Ini</option>
                 <option value="semua">Semua Waktu</option>
+                <option value="custom">Custom</option>
               </select>
-              <button class="btn btn-outline-success whitespace-nowrap" style="white-space: nowrap;"
-                onclick="loadReportData()"><i class="fa-solid fa-rotate-right me-2"></i>Refresh</button>
+              <input type="date" class="form-control border-success" id="laporan-date-from" onchange="document.getElementById('laporan-filter').value='custom'" style="max-width: 130px;">
+              <span class="align-self-center fw-bold text-muted">s/d</span>
+              <input type="date" class="form-control border-success" id="laporan-date-to" onchange="document.getElementById('laporan-filter').value='custom'" style="max-width: 130px;">
+              <button class="btn btn-success whitespace-nowrap" style="white-space: nowrap;"
+                onclick="loadReportData()"><i class="fa-solid fa-search"></i></button>
+              <button class="btn btn-danger whitespace-nowrap" style="white-space: nowrap;"
+                onclick="exportToPDF('Laporan Keuangan')"><i class="fa-solid fa-file-pdf"></i></button>
             </div>
           </div>
+
+          <div class="card shadow-sm border-0 border-start border-4 border-success mb-3 p-3">
+             <div class="d-flex justify-content-between align-items-center">
+                <div>
+                   <p class="text-muted small fw-bold mb-1 text-uppercase">Sisa Saldo Kas (Cash)</p>
+                   <h4 class="fw-bold text-dark m-0" id="laporan-cash-balance">Rp 0</h4>
+                </div>
+                <i class="fa-solid fa-wallet fa-2x text-success opacity-50"></i>
+             </div>
+          </div>
+
+          <ul class="nav nav-tabs mb-3" id="laporanTab" role="tablist">
+            <li class="nav-item" role="presentation"><button class="nav-link active fw-bold" data-bs-toggle="tab"
+                data-bs-target="#tab-lap-keuangan">Keuangan</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link fw-bold" data-bs-toggle="tab"
+                data-bs-target="#tab-lap-stok" onclick="renderStockMovementReport()">Pergerakan Stok</button></li>
+          </ul>
+
+          <div class="tab-content flex-grow-1 d-flex flex-column">
+            <!-- TAB KEUANGAN -->
+            <div class="tab-pane fade show active flex-column flex-grow-1" id="tab-lap-keuangan">
 
           <!-- Summary Cards -->
           <div class="row g-3 mb-4">
@@ -442,6 +485,37 @@
               </div>
             </div>
           </div>
+          </div> <!-- End Tab Keuangan -->
+          
+          <!-- TAB LAPORAN STOK -->
+          <div class="tab-pane fade flex-column flex-grow-1" id="tab-lap-stok">
+            <div class="card shadow-sm border-0 flex-grow-1 d-flex flex-column h-100">
+              <div class="card-header bg-white border-0 pt-3 pb-0 px-4">
+                <h6 class="fw-bold m-0"><i class="fa-solid fa-boxes-stacked text-secondary me-2"></i>Ringkasan Pergerakan Stok</h6>
+                <p class="small text-muted mb-0 mt-1">Berdasarkan filter tanggal yang dipilih di atas.</p>
+              </div>
+              <div class="card-body p-0 d-flex flex-column overflow-auto h-100">
+                <div class="table-responsive h-100">
+                  <table class="table table-hover mb-0">
+                    <thead class="bg-light">
+                      <tr>
+                        <th class="ps-4">Nama Produk</th>
+                        <th class="text-center">Awal</th>
+                        <th class="text-center text-success">Masuk</th>
+                        <th class="text-center text-danger">Keluar Jual</th>
+                        <th class="text-center text-warning">Keluar Lain</th>
+                        <th class="text-center fw-bold">Sisa Saat Ini</th>
+                      </tr>
+                    </thead>
+                    <tbody id="table-lap-stok-movement">
+                      <tr><td colspan="6" class="text-center py-4 text-muted">Klik pencarian untuk memuat data.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div> <!-- End Tab Stok -->
+          </div> <!-- End Tab Content -->
         </div>
 
         <!-- 5. OWNER VIEW -->

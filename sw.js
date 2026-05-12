@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pos-polindes-v1.4.1';
+const CACHE_NAME = 'pos-polindes-v1.5.0';
 const urlsToCache = [
   './',
   './index.html',
@@ -11,7 +11,9 @@ const urlsToCache = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css',
   'https://cdn.jsdelivr.net/npm/chart.js',
-  'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js'
+  'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',
+  'https://unpkg.com/jspdf@4.2.1/dist/jspdf.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/jspdf-autotable@5.0.7/dist/jspdf.plugin.autotable.min.js'
 ];
 
 self.addEventListener('install', event => {

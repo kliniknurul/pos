@@ -167,13 +167,12 @@ async function initApp() {
 function getFilterValue(type) {
   const sel = document.getElementById(type + '-filter');
   if (!sel) return 'hari_ini';
-  if (sel.value === 'custom') {
-    const from = document.getElementById(type + '-date-from').value;
-    const to = document.getElementById(type + '-date-to').value;
-    if (from && to) return `custom_${from}_${to}`;
-    return 'hari_ini'; // fallback
-  }
-  return sel.value;
+  // Always return actual dates from input for consistency
+  const from = document.getElementById(type + '-date-from')?.value;
+  const to = document.getElementById(type + '-date-to')?.value;
+  if (from && to) return `custom_${from}_${to}`;
+  if (sel.value === 'semua') return 'semua';
+  return 'hari_ini'; // fallback
 }
 
 function handleFilterChange(type) {
@@ -197,7 +196,11 @@ function handleFilterChange(type) {
       start = new Date(now.getFullYear(), now.getMonth(), 1);
       end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     } else {
-      dFrom.value = ''; dTo.value = ''; return;
+      dFrom.value = ''; dTo.value = '';
+      // Auto-trigger for 'semua'
+      if (type === 'history') loadHistoryData();
+      else if (type === 'laporan') loadReportData();
+      return;
     }
     
     const fmt = d => {
@@ -211,42 +214,133 @@ function handleFilterChange(type) {
     void dFrom.offsetWidth; 
     dFrom.classList.add('flash-fill'); dTo.classList.add('flash-fill');
   }
+  // Auto-trigger data load after filter change
+  if (type === 'history') loadHistoryData();
+  else if (type === 'laporan') loadReportData();
 }
 
 function updateGlobalCashBalance() {
   const cashAcc = GLOBAL_ACCOUNTS.find(a => String(a.Nama_Akun).toLowerCase() === 'cash' || String(a.Nama_Akun).toLowerCase() === 'kas');
   const balance = cashAcc ? formatRp(cashAcc.Saldo) : 'Rp 0';
-  const rCb = document.getElementById('riwayat-cash-balance');
-  if (rCb) rCb.innerText = balance;
   const lCb = document.getElementById('laporan-cash-balance');
   if (lCb) lCb.innerText = balance;
 }
 
-function exportToPDF(title) {
-  const style = document.createElement('style');
-  style.id = 'report-print-style';
-  style.innerHTML = `
-    @page { size: A4 portrait !important; margin: 10mm !important; }
-    html, body { width: auto !important; height: auto !important; background: #fff !important; }
-    body > * { display: block !important; }
-    #sidebar, .top-header, #print-clone { display: none !important; }
-    .view-container:not(.active-view) { display: none !important; }
-    .view-container.active-view { padding: 0 !important; overflow: visible !important; height: auto !important; background: white !important;}
-    .btn, select, input[type=date], .nav-tabs { display: none !important; }
-    span.text-muted:contains('s/d') { display: none !important; }
-    .card { border: 1px solid #ddd !important; box-shadow: none !important; break-inside: avoid; }
-  `;
-  document.head.appendChild(style);
-  setTimeout(() => {
-    window.print();
-    document.getElementById('report-print-style').remove();
-  }, 300);
+// === PDF EXPORT (jsPDF + autoTable) ===
+function _pdfHeader(doc, title, filterType) {
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text(GLOBAL_PROFILE.Nama_Bisnis || 'Polindes POS', pageW / 2, 18, { align: 'center' });
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  if (GLOBAL_PROFILE.Alamat) doc.text(GLOBAL_PROFILE.Alamat, pageW / 2, 24, { align: 'center' });
+  if (GLOBAL_PROFILE.Telepon) doc.text('Telp: ' + GLOBAL_PROFILE.Telepon, pageW / 2, 29, { align: 'center' });
+  doc.setDrawColor(200); doc.line(14, 32, pageW - 14, 32);
+  doc.setFontSize(12); doc.setFont(undefined, 'bold');
+  doc.text(title, 14, 40);
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  const fromEl = document.getElementById(filterType + '-date-from');
+  const toEl = document.getElementById(filterType + '-date-to');
+  const period = (fromEl?.value && toEl?.value) ? `Periode: ${fromEl.value} s/d ${toEl.value}` : 'Periode: Semua Waktu';
+  doc.text(period, 14, 46);
+  const now = new Date();
+  doc.text('Dicetak: ' + now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID', {hour:'2-digit',minute:'2-digit'}), 14, 51);
+  return 56;
 }
+
+function _pdfFooter(doc) {
+  const pages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(150);
+    doc.text(`Halaman ${i} dari ${pages}`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+  }
+}
+
+function exportRiwayatPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  let y = _pdfHeader(doc, 'LAPORAN RIWAYAT TRANSAKSI', 'history');
+
+  // Tabel Penjualan
+  const trxRows = [];
+  document.querySelectorAll('#table-history-trx > tr:not(:has(.collapse))').forEach(tr => {
+    const cells = tr.querySelectorAll('td');
+    if (cells.length >= 7) {
+      trxRows.push([cells[1]?.innerText, cells[2]?.innerText, cells[3]?.innerText, cells[4]?.innerText, cells[5]?.innerText, cells[6]?.innerText]);
+    }
+  });
+  if (trxRows.length > 0) {
+    doc.setFontSize(10); doc.setFont(undefined, 'bold');
+    doc.text('Riwayat Penjualan', 14, y); y += 2;
+    doc.autoTable({ head: [['Tanggal','ID Trx','Pasien','Total','Metode','Kasir']], body: trxRows, startY: y, styles: { fontSize: 8 }, headStyles: { fillColor: [94,114,228] }, margin: { left: 14, right: 14 } });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // Tabel Arus Kas
+  const arusRows = [];
+  document.querySelectorAll('#table-history-arus > tr:not(:has(.collapse))').forEach(tr => {
+    const cells = tr.querySelectorAll('td');
+    if (cells.length >= 6) {
+      arusRows.push([cells[1]?.innerText, cells[2]?.innerText, cells[3]?.innerText, cells[4]?.innerText, cells[5]?.innerText]);
+    }
+  });
+  if (arusRows.length > 0) {
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFontSize(10); doc.setFont(undefined, 'bold');
+    doc.text('Arus Kas', 14, y); y += 2;
+    doc.autoTable({ head: [['Tanggal','Kategori','Nominal','Akun','PIC']], body: arusRows, startY: y, styles: { fontSize: 8 }, headStyles: { fillColor: [45,206,137] }, margin: { left: 14, right: 14 } });
+  }
+
+  _pdfFooter(doc);
+  doc.save('Riwayat_Transaksi_' + new Date().toISOString().slice(0,10) + '.pdf');
+  showToast('PDF berhasil diunduh!', 'success');
+}
+
+function exportLaporanPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  let y = _pdfHeader(doc, 'LAPORAN KEUANGAN', 'laporan');
+
+  // Summary
+  const masuk = document.getElementById('report-kas-masuk')?.innerText || 'Rp 0';
+  const keluar = document.getElementById('report-kas-keluar')?.innerText || 'Rp 0';
+  const net = document.getElementById('report-net-kas')?.innerText || 'Rp 0';
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'bold'); doc.text('Total Kas Masuk', 14, y);
+  doc.setFont(undefined, 'normal'); doc.text(': ' + masuk, 60, y); y += 6;
+  doc.setFont(undefined, 'bold'); doc.text('Total Kas Keluar', 14, y);
+  doc.setFont(undefined, 'normal'); doc.text(': ' + keluar, 60, y); y += 6;
+  doc.setFont(undefined, 'bold'); doc.text('Net Kas', 14, y);
+  doc.setFont(undefined, 'normal'); doc.text(': ' + net, 60, y); y += 10;
+
+  // Rincian tabel
+  const rincianData = [
+    ['Pendapatan Penjualan', document.getElementById('report-rincian-jual')?.innerText || 'Rp 0'],
+    ['Pemasukan Lainnya', document.getElementById('report-rincian-lain')?.innerText || 'Rp 0'],
+    ['Total Pengeluaran', document.getElementById('report-rincian-keluar')?.innerText || 'Rp 0'],
+    ['NET KAS', document.getElementById('report-rincian-net')?.innerText || 'Rp 0'],
+  ];
+  doc.autoTable({ head: [['Kategori', 'Nominal (Rp)']], body: rincianData, startY: y, styles: { fontSize: 9 }, headStyles: { fillColor: [45,206,137] }, margin: { left: 14, right: 14 } });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Saldo Kas
+  const saldo = document.getElementById('laporan-cash-balance')?.innerText || 'Rp 0';
+  doc.setFontSize(10); doc.setFont(undefined, 'bold');
+  doc.text('Sisa Saldo Kas (Cash): ' + saldo, 14, y);
+
+  _pdfFooter(doc);
+  doc.save('Laporan_Keuangan_' + new Date().toISOString().slice(0,10) + '.pdf');
+  showToast('PDF berhasil diunduh!', 'success');
+}
+
+let topProductsChart = null;
 
 function renderStockMovementReport() {
   const tb = document.getElementById('table-lap-stok-movement');
+  const logTb = document.getElementById('table-stock-logs');
   if (!tb) return;
   tb.innerHTML = '<tr><td colspan="6" class="text-center py-4">Memuat data pergerakan stok...</td></tr>';
+  if (logTb) logTb.innerHTML = '<tr><td colspan="5" class="text-center py-4">Memuat log...</td></tr>';
   
   const filter = getFilterValue('laporan');
   fetchApi('getStockLogs', filter).then(res => {
@@ -254,15 +348,17 @@ function renderStockMovementReport() {
       tb.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Gagal memuat data</td></tr>';
       return;
     }
+    // Aggregate movement data
     const agg = {};
+    let totalSold = 0, totalRestock = 0;
     res.data.forEach(log => {
       try {
         const detail = JSON.parse(log.Detail_Stok_JSON || '[]');
         detail.forEach(d => {
            if (!agg[d.id]) agg[d.id] = { nama: d.nama || d.id, masuk: 0, keluar_jual: 0, keluar_lain: 0 };
-           if (d.qty_masuk) agg[d.id].masuk += parseInt(d.qty_masuk);
+           if (d.qty_masuk) { agg[d.id].masuk += parseInt(d.qty_masuk); totalRestock += parseInt(d.qty_masuk); }
            if (d.qty_keluar) {
-             if (log['Jenis (Penjualan/Masuk/Keluar)'] === 'Penjualan') agg[d.id].keluar_jual += parseInt(d.qty_keluar);
+             if (log['Jenis (Penjualan/Masuk/Keluar)'] === 'Penjualan') { agg[d.id].keluar_jual += parseInt(d.qty_keluar); totalSold += parseInt(d.qty_keluar); }
              else agg[d.id].keluar_lain += parseInt(d.qty_keluar);
            }
         });
@@ -274,6 +370,51 @@ function renderStockMovementReport() {
        agg[p.ID].sisa = p.Stok;
     });
 
+    // === INSIGHT CARDS ===
+    // Top product
+    const sorted = Object.values(agg).filter(v => v.keluar_jual > 0).sort((a,b) => b.keluar_jual - a.keluar_jual);
+    const topEl = document.getElementById('insight-top-product');
+    const topQtyEl = document.getElementById('insight-top-qty');
+    if (sorted.length > 0) {
+      topEl.innerText = sorted[0].nama;
+      topQtyEl.innerText = sorted[0].keluar_jual + ' unit terjual';
+    } else { topEl.innerText = '-'; topQtyEl.innerText = 'Tidak ada penjualan'; }
+
+    document.getElementById('insight-total-sold').innerText = totalSold + ' unit';
+    document.getElementById('insight-total-restock').innerText = totalRestock + ' unit';
+
+    // Low stock count
+    const lowStockItems = GLOBAL_PRODUCTS.filter(p => p.Kategori === 'Barang' && parseInt(p.Stok) <= 5).sort((a,b) => a.Stok - b.Stok);
+    document.getElementById('insight-low-stock').innerText = lowStockItems.length + ' produk';
+
+    // === TOP 5 CHART ===
+    const top5 = sorted.slice(0, 5);
+    const ctxTop = document.getElementById('topProductsChart');
+    if (topProductsChart) topProductsChart.destroy();
+    if (top5.length > 0) {
+      topProductsChart = new Chart(ctxTop, {
+        type: 'bar',
+        data: {
+          labels: top5.map(p => p.nama.length > 20 ? p.nama.substring(0,20)+'...' : p.nama),
+          datasets: [{ label: 'Unit Terjual', data: top5.map(p => p.keluar_jual), backgroundColor: ['#f5365c','#fb6340','#ffd600','#11cdef','#8965e0'], borderRadius: 6, borderSkipped: false }]
+        },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+      });
+    }
+
+    // === ALERT TABLE ===
+    const alertTb = document.getElementById('table-low-stock-alert');
+    alertTb.innerHTML = '';
+    if (lowStockItems.length === 0) {
+      alertTb.innerHTML = '<tr><td colspan="2" class="text-center py-3 text-success"><i class="fa-solid fa-circle-check me-1"></i>Semua stok aman!</td></tr>';
+    } else {
+      lowStockItems.forEach(p => {
+        const cls = parseInt(p.Stok) <= 0 ? 'bg-danger text-white' : (parseInt(p.Stok) <= 2 ? 'bg-warning' : 'bg-light');
+        alertTb.innerHTML += `<tr><td class="ps-4 fw-bold">${p.Nama}</td><td class="text-center"><span class="badge ${cls} rounded-pill px-3">${p.Stok}</span></td></tr>`;
+      });
+    }
+
+    // === MOVEMENT TABLE ===
     tb.innerHTML = '';
     const keys = Object.keys(agg).sort((a,b) => agg[a].nama.localeCompare(agg[b].nama));
     let hasData = false;
@@ -281,16 +422,21 @@ function renderStockMovementReport() {
       const v = agg[k];
       if (v.masuk === 0 && v.keluar_jual === 0 && v.keluar_lain === 0) return;
       hasData = true;
+      const sisa = v.sisa !== undefined ? v.sisa : '-';
+      const awal = sisa !== '-' ? (sisa + v.keluar_jual + v.keluar_lain - v.masuk) : '-';
       tb.innerHTML += `<tr>
         <td class="ps-4 fw-bold">${v.nama}</td>
-        <td class="text-center">-</td>
+        <td class="text-center">${awal}</td>
         <td class="text-center text-success">+${v.masuk}</td>
         <td class="text-center text-danger">-${v.keluar_jual}</td>
         <td class="text-center text-warning">-${v.keluar_lain}</td>
-        <td class="text-center fw-bold">${v.sisa}</td>
+        <td class="text-center fw-bold">${sisa}</td>
       </tr>`;
     });
     if(!hasData) tb.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Tidak ada pergerakan stok untuk filter ini.</td></tr>';
+
+    // === LOG TABLE (moved from Inventori) ===
+    renderStockLogs(res.data);
   });
 }
 
@@ -326,7 +472,6 @@ function switchView(viewId) {
     const filter = document.getElementById('history-filter') ? document.getElementById('history-filter').value : 'hari_ini';
     if (IS_RIWAYAT_STALE || RIWAYAT_LAST_FILTER !== filter) loadHistoryData();
   }
-  else if (viewId === 'stok' && IS_STOK_STALE) loadStockLogs();
   else if (viewId === 'laporan') loadReportData();
 }
 
@@ -1042,8 +1187,26 @@ function renderHistoryData(data) {
       </td>
     </tr>`;
   });
+
+  // Init accordion behavior for both tables
+  initAccordionBehavior('tab-trx');
+  initAccordionBehavior('tab-arus');
 }
 
+// Accordion: expand one detail row = auto-collapse all others in same container
+function initAccordionBehavior(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container || container._accordionInit) return;
+  container._accordionInit = true;
+  container.addEventListener('show.bs.collapse', function(e) {
+    const openItems = container.querySelectorAll('.collapse.show');
+    openItems.forEach(item => {
+      if (item !== e.target) {
+        bootstrap.Collapse.getOrCreateInstance(item, {toggle: false}).hide();
+      }
+    });
+  });
+}
 async function loadHistoryData() {
   const filter = getFilterValue('history');
   
@@ -1119,28 +1282,18 @@ function renderMasterStok(query = '') {
 }
 
 async function loadStockLogs() {
+  // This function now only loads data for the Laporan tab
+  const filter = getFilterValue('laporan');
   const tb = document.getElementById('table-stock-logs');
-  const filter = getFilterValue('stock');
-  const cacheKey = 'pos_stock_cache_' + filter;
-
-  // Cache-first: render dari cache jika ada
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) {
-    try { renderStockLogs(JSON.parse(cached)); } catch(e) {}
-  } else {
-    tb.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Memuat data...</td></tr>';
-  }
-
-  // Background fetch
+  if (!tb) return;
+  tb.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">Memuat data...</td></tr>';
   try {
     const res = await fetchApi('getStockLogs', filter);
     if (!res.success) {
-      if (!cached) tb.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">Error: ${res.message}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">Error: ${res.message}</td></tr>`;
       return;
     }
-    localStorage.setItem(cacheKey, JSON.stringify(res.data));
     renderStockLogs(res.data);
-    IS_STOK_STALE = false;
   } catch(err) { console.error(err); }
 }
 
@@ -1190,6 +1343,9 @@ function renderStockLogs(logs) {
         </td>
       </tr>`;
   });
+  // Init accordion for stock logs
+  const logContainer = document.getElementById('table-stock-logs')?.closest('.card-body, .tab-pane');
+  if (logContainer) initAccordionBehavior(logContainer.id || 'tab-lap-stok');
 }
 
 // Tambah modal functions

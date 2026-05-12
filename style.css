@@ -399,6 +399,37 @@ body {
   animation: flashFill 1s ease-out;
 }
 
+/* --- INSIGHT CARDS (Laporan Stok) --- */
+.insight-card {
+  border-radius: 12px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.insight-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+}
+.insight-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+/* Filter bar responsive wrap */
+@media (max-width: 992px) {
+  .d-flex.gap-2.flex-wrap {
+    gap: 0.35rem !important;
+  }
+  .d-flex.gap-2.flex-wrap > select,
+  .d-flex.gap-2.flex-wrap > input[type=date] {
+    max-width: 120px !important;
+    font-size: 0.8rem;
+  }
+}
 /* ======================================================
    PRINT SYSTEM — Thermal 58mm & Laptop Preview
    Strategi: Clone konten #print-area ke #print-clone

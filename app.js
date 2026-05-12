@@ -281,14 +281,14 @@ function renderStockMovementReport() {
       const v = agg[k];
       if (v.masuk === 0 && v.keluar_jual === 0 && v.keluar_lain === 0) return;
       hasData = true;
-      tb.innerHTML += \`<tr>
-        <td class="ps-4 fw-bold">\${v.nama}</td>
+      tb.innerHTML += `<tr>
+        <td class="ps-4 fw-bold">${v.nama}</td>
         <td class="text-center">-</td>
-        <td class="text-center text-success">+\${v.masuk}</td>
-        <td class="text-center text-danger">-\${v.keluar_jual}</td>
-        <td class="text-center text-warning">-\${v.keluar_lain}</td>
-        <td class="text-center fw-bold">\${v.sisa}</td>
-      </tr>\`;
+        <td class="text-center text-success">+${v.masuk}</td>
+        <td class="text-center text-danger">-${v.keluar_jual}</td>
+        <td class="text-center text-warning">-${v.keluar_lain}</td>
+        <td class="text-center fw-bold">${v.sisa}</td>
+      </tr>`;
     });
     if(!hasData) tb.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">Tidak ada pergerakan stok untuk filter ini.</td></tr>';
   });

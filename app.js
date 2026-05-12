@@ -1309,35 +1309,9 @@ function renderOwnerView() {
   });
   if (GLOBAL_ACCOUNTS.length === 0) tbAccounts.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Belum ada akun.</td></tr>`;
   
-  // Render ringkasan saldo akun (dipindah dari Laporan)
-  renderOwnerSaldo();
   loadOwnerUsers();
 }
 
-async function renderOwnerSaldo() {
-  const tb = document.getElementById('owner-account-balances');
-  tb.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-muted">Memuat saldo...</td></tr>';
-  
-  const res = await fetchApi('getReportData', 'semua');
-  if (!res.success) {
-    tb.innerHTML = `<tr><td colspan="2" class="text-center text-danger py-4">${res.message}</td></tr>`;
-    return;
-  }
-  
-  tb.innerHTML = '';
-  const accounts = res.data.accounts || [];
-  if (accounts.length === 0) {
-    tb.innerHTML = '<tr><td colspan="2" class="text-center py-4 text-muted">Belum ada akun</td></tr>';
-  } else {
-    accounts.forEach(acc => {
-      tb.innerHTML += `
-        <tr>
-          <td class="ps-4 fw-bold text-dark">${acc.name}</td>
-          <td class="text-end pe-4 font-monospace fs-6 ${acc.saldo < 0 ? 'text-danger' : 'text-success'}">${formatRp(acc.saldo)}</td>
-        </tr>`;
-    });
-  }
-}
 
 async function loadOwnerUsers() {
   const tbUsers = document.getElementById('table-owner-users');
